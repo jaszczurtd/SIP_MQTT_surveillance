@@ -8,6 +8,7 @@
 #include <pwd.h>
 #include <termios.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #define GPIO_OFFSET 0x00200000
 #define BLOCK_SIZE 4096
@@ -19,6 +20,8 @@
 
 #define MAX_LEN 128
 #define AUTH_PATH ".mqtt_auth"
+
+#define SWITCHES_TIMEOUT 60
 
 void get_password(char *buf, size_t buflen) {
     struct termios oldt, newt;
@@ -71,6 +74,17 @@ int read_or_prompt_credentials(char *username, char *password) {
 
 
 volatile unsigned *gpio = NULL;
+volatile bool timeout_set = false;
+
+// Funkcja obsługi sygnału alarmowego
+void alarm_handler(int sig) {
+    timeout_set = true;
+}
+
+void set_timeout(unsigned long time) {
+    timeout_set = false;
+    alarm(time);
+}
 
 void setup_gpio_mem() {
     int mem_fd = open("/dev/gpiomem", O_RDWR | O_SYNC);
@@ -108,7 +122,7 @@ void on_connect(struct mosquitto *mosq, void *userdata, int rc) {
 
 void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg) {
 
-    printf("received payload: %s for topic:%s\n", msg->payload, msg->topic);
+    printf("received payload: %s for topic:%s\n", (char*)msg->payload, msg->topic);
 
     int pin = 0;
     if (strcmp(msg->topic, "gpio/17") == 0) pin = 17;
@@ -116,8 +130,10 @@ void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_m
 
     if (pin) {
         if (strcasecmp(msg->payload, "on") == 0) {
+            set_timeout(SWITCHES_TIMEOUT);
             set_gpio(pin, 1);
         } else if (strcasecmp(msg->payload, "off") == 0) {
+            set_timeout(0);
             set_gpio(pin, 0);
         }
     }
@@ -151,8 +167,29 @@ int main() {
 
     mosquitto_message_callback_set(mosq, on_message);
 
+    // Ustawienie obsługi sygnału alarmowego
+    signal(SIGALRM, alarm_handler);
+    
+    // Uruchamiamy pętlę MQTT w tle
+    mosquitto_loop_start(mosq);
 
-    mosquitto_loop_forever(mosq, -1, 1);
+    // Główna pętla sprawdzająca flagę
+    while (1) {
+        if(timeout_set) {
+            printf("timeout for switches has been reached\n");
+            set_timeout(0);
+            
+            set_gpio(17, 0);
+            set_gpio(27, 0);
+
+            // Publikacja stanu OFF z retain
+            mosquitto_publish(mosq, NULL, "gpio/17", 3, "off", 1, true);
+            mosquitto_publish(mosq, NULL, "gpio/27", 3, "off", 1, true);
+        }
+
+        sleep(1);
+    }
+
     mosquitto_destroy(mosq);
     mosquitto_lib_cleanup();
 
