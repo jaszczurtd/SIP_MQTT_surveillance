@@ -90,4 +90,5 @@ These credentials are securely stored using `SharedPreferences` and reused autom
 - Network access to MQTT broker and SIP devices (typically via WireGuard VPN)
 
 📄 License
+
 This project is released under the MIT License.
