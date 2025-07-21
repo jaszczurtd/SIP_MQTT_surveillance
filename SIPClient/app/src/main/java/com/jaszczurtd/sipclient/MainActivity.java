@@ -125,11 +125,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
-            callHomeButton.setVisibility(View.GONE);
-            callGarageButton.setVisibility(View.GONE);
-            hangupButton.setVisibility(View.GONE);
-            toggleContainer.setVisibility(View.GONE);
-
             handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
         }
     }
@@ -406,8 +401,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
         if(call != null) {
             Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
             if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
-                toggleContainer.setVisibility(View.VISIBLE);
                 setLightTo(true);
+                toggleContainer.setVisibility(View.VISIBLE);
             }
         }
     }

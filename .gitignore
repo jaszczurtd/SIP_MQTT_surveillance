@@ -6,4 +6,5 @@ materials/~*
 # ustawienia lokalne Android Studio
 Android/.idea/*
 RaspberryPi/mqtt/mqtt_gpio
+SIPClient/.idea/*
 
