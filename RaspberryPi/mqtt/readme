@@ -1,0 +1,9 @@
+
+install:
+sudo apt update
+sudo apt install libmosquitto-dev libmosquitto1 mosquitto-clients
+
+compile:
+gcc -o mqtt_gpio mqtt_gpio_client.c -lmosquitto
+
+
