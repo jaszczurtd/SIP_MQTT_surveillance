@@ -23,6 +23,8 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.linphone.core.*;
 
 import java.util.Objects;
@@ -37,6 +39,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     CompoundButton.OnCheckedChangeListener lightListener, bellListener;
     LinearLayout toggleContainer;
     MQTTClient mqttClient;
+    boolean MQTTIsActive;
     NetworkMonitor networkMonitor;
     SharedPreferences prefs;
 
@@ -102,23 +105,21 @@ public class MainActivity extends AppCompatActivity implements Constants {
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
             public void onConnected() {
-                Log.v(TAG, "Połączono z siecią");
+                Log.v(TAG, "Internet is connected");
 
-                runOnUiThread(() -> {
-                    prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
-                    String user = prefs.getString(MQTT_USER, null);
-                    String pass = prefs.getString(MQTT_PASS, null);
-                    if (user != null && pass != null) {
-                        setupMQTT(user, pass);
-                    } else {
-                        askForCredentials();
-                    }
-                });
+                prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
+                String user = prefs.getString(MQTT_USER, null);
+                String pass = prefs.getString(MQTT_PASS, null);
+                if (user != null && pass != null) {
+                    setupMQTT(user, pass);
+                } else {
+                    askForCredentials();
+                }
             }
 
             @Override
             public void onDisconnected() {
-                Log.v(TAG, "Rozłączono z siecią");
+                Log.v(TAG, "Internet has been disconnected");
                 destroyMQTT();
             }
         });
@@ -231,6 +232,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
         } catch (Exception e) {
             e.printStackTrace();
             Toast.makeText(this, getString(R.string.linphone_connection_error) + e.getMessage(), Toast.LENGTH_SHORT).show();
+            setLightTo(false);
         }
     }
 
@@ -290,63 +292,59 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     void setupMQTT(String user, String pass) {
-        lightListener = (btn, isChecked) -> {
-            setLightTo(isChecked);
-        };
-        switchLight.setOnCheckedChangeListener(lightListener);
+        if((mqttClient != null && mqttClient.isConnected()) || MQTTIsActive) {
+            Log.v(TAG, "MQTT client already connected and active");
+            return;
+        }
 
-        bellListener = (btn, isChecked) -> {
-            setBellTo(isChecked);
-        };
-        switchBell.setOnCheckedChangeListener(bellListener);
+        MQTTIsActive = true;
+        runOnUiThread(() -> {
+            lightListener = (btn, isChecked) -> {
+                setLightTo(isChecked);
+            };
+            switchLight.setOnCheckedChangeListener(lightListener);
 
-        toggleContainer.setVisibility(View.GONE);
+            bellListener = (btn, isChecked) -> {
+                setBellTo(isChecked);
+            };
+            switchBell.setOnCheckedChangeListener(bellListener);
 
-        mqttClient = new MQTTClient(
-            this,
-            MQTT_BROKER,
-            user, pass,
-            (topic, message) -> runOnUiThread(() -> {
-                boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
-                if (topic.equals(MQTT_LIGHTS_TOPIC)) {
-                    if(switchLight.isChecked() != isOn) {
-                        switchLight.setOnCheckedChangeListener(null);
-                        switchLight.setChecked(isOn);
-                        switchLight.setOnCheckedChangeListener(lightListener);
+            toggleContainer.setVisibility(View.GONE);
+
+            mqttClient = new MQTTClient(
+                this,
+                MQTT_BROKER,
+                user, pass,
+                (topic, message) -> runOnUiThread(() -> {
+                    updateSwitchesFromBroker(topic, message);
+                }),
+                new MQTTClient.MQTTStatusListener() {
+                    @Override
+                    public void onConnected() {
+                        runOnUiThread(() -> {
+                            manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
+                        });
                     }
-                }
-                if (topic.equals(MQTT_BELL_TOPIC)) {
-                    if(switchBell.isChecked() != isOn) {
-                        switchBell.setOnCheckedChangeListener(null);
-                        switchBell.setChecked(isOn);
-                        switchBell.setOnCheckedChangeListener(bellListener);
+
+                    @Override
+                    public void onDisconnected() {
+                        runOnUiThread(() -> {
+                            toggleContainer.setVisibility(View.GONE);
+                            Toast.makeText(MainActivity.this, getString(R.string.mqttt_connection_end), Toast.LENGTH_SHORT).show();
+                        });
                     }
-                }
-            }),
-        new MQTTClient.MQTTStatusListener() {
-            @Override
-            public void onConnected() {
-                runOnUiThread(() -> {
-                    manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
-                });
-            }
 
-            @Override
-            public void onDisconnected() {
-                runOnUiThread(() -> {
-                    toggleContainer.setVisibility(View.GONE);
-                    Toast.makeText(MainActivity.this, getString(R.string.mqttt_connection_end), Toast.LENGTH_SHORT).show();
+                    @Override
+                    public void onConnectionFailed(String reason) {
+                        Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
+                    }
                 });
-            }
-
-            @Override
-            public void onConnectionFailed(String reason) {
-                Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
-            }
         });
     }
 
     void destroyMQTT() {
+        Log.v(TAG, "destroy MQTT client");
+
         switchLight.setOnCheckedChangeListener(null);
         switchBell.setOnCheckedChangeListener(null);
 
@@ -354,6 +352,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             mqttClient.stop();
             mqttClient = null;
         }
+        MQTTIsActive = false;
     }
 
     void setLightTo(boolean isOn) {
@@ -365,36 +364,38 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     void askForCredentials() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(getString(R.string.mqtt_login));
+        runOnUiThread(() -> {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle(getString(R.string.mqtt_login));
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
 
-        final EditText inputUser = new EditText(this);
-        inputUser.setHint(getString(R.string.user));
-        layout.addView(inputUser);
+            final EditText inputUser = new EditText(this);
+            inputUser.setHint(getString(R.string.user));
+            layout.addView(inputUser);
 
-        final EditText inputPass = new EditText(this);
-        inputPass.setHint(getString(R.string.pass));
-        inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        layout.addView(inputPass);
+            final EditText inputPass = new EditText(this);
+            inputPass.setHint(getString(R.string.pass));
+            inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            layout.addView(inputPass);
 
-        builder.setView(layout);
+            builder.setView(layout);
 
-        builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
-            String user = inputUser.getText().toString();
-            String pass = inputPass.getText().toString();
-            prefs.edit()
-                    .putString(MQTT_USER, user)
-                    .putString(MQTT_PASS, pass)
-                    .apply();
+            builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
+                String user = inputUser.getText().toString();
+                String pass = inputPass.getText().toString();
+                prefs.edit()
+                        .putString(MQTT_USER, user)
+                        .putString(MQTT_PASS, pass)
+                        .apply();
 
-            setupMQTT(user, pass);
+                setupMQTT(user, pass);
+            });
+
+            builder.setCancelable(false);
+            builder.show();
         });
-
-        builder.setCancelable(false);
-        builder.show();
     }
 
     void manageMQTTSwitchesVisibility(Call call) {
@@ -405,5 +406,30 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 toggleContainer.setVisibility(View.VISIBLE);
             }
         }
+    }
+
+    void updateSwitchesFromBroker(String topic, MqttMessage message) {
+        Log.v(TAG, "Broker update: " + topic + " message:" + message.toString());
+
+        boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
+        if (topic.equals(MQTT_LIGHTS_TOPIC)) {
+            if(switchLight.isChecked() != isOn) {
+                Log.v(TAG, "set lights to:" + isOn);
+
+                switchLight.setOnCheckedChangeListener(null);
+                switchLight.setChecked(isOn);
+                switchLight.setOnCheckedChangeListener(lightListener);
+            }
+        }
+        if (topic.equals(MQTT_BELL_TOPIC)) {
+            if(switchBell.isChecked() != isOn) {
+                Log.v(TAG, "set bell to:" + isOn);
+
+                switchBell.setOnCheckedChangeListener(null);
+                switchBell.setChecked(isOn);
+                switchBell.setOnCheckedChangeListener(bellListener);
+            }
+        }
+
     }
 }
