@@ -120,7 +120,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             @Override
             public void onDisconnected() {
                 Log.v(TAG, "Internet has been disconnected");
-                destroyMQTT();
             }
         });
 
