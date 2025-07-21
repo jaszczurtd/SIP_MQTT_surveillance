@@ -9,6 +9,8 @@
 #include <termios.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <time.h>
+#include <stdint.h>
 
 #define GPIO_OFFSET 0x00200000
 #define BLOCK_SIZE 4096
@@ -22,6 +24,12 @@
 #define AUTH_PATH ".mqtt_auth"
 
 #define SWITCHES_TIMEOUT 60
+
+uint64_t millis() {
+    struct timespec spec;
+    clock_gettime(CLOCK_MONOTONIC, &spec);  // dokładny zegar monotoniczny
+    return (uint64_t)(spec.tv_sec) * 1000 + (spec.tv_nsec / 1000000);
+}
 
 void get_password(char *buf, size_t buflen) {
     struct termios oldt, newt;
@@ -74,18 +82,6 @@ int read_or_prompt_credentials(char *username, char *password) {
 
 
 volatile unsigned *gpio = NULL;
-volatile bool timeout_set = false;
-
-// Funkcja obsługi sygnału alarmowego
-void alarm_handler(int sig) {
-    timeout_set = true;
-}
-
-void set_timeout(unsigned long time) {
-    timeout_set = false;
-    alarm(time);
-}
-
 void setup_gpio_mem() {
     int mem_fd = open("/dev/gpiomem", O_RDWR | O_SYNC);
     void *gpio_map = mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, GPIO_OFFSET);
@@ -119,6 +115,8 @@ void on_connect(struct mosquitto *mosq, void *userdata, int rc) {
     }
 }
 
+unsigned long lightsStartTime = 0;
+unsigned long bellStartTime = 0;
 
 void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg) {
 
@@ -128,15 +126,37 @@ void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_m
     if (strcmp(msg->topic, "gpio/17") == 0) pin = 17;
     if (strcmp(msg->topic, "gpio/27") == 0) pin = 27;
 
+    unsigned long now = millis();
+
     if (pin) {
         if (strcasecmp(msg->payload, "on") == 0) {
-            set_timeout(SWITCHES_TIMEOUT);
+            if(pin == 17) {
+                lightsStartTime = now + (SWITCHES_TIMEOUT * 1000);
+                printf("set timeout for lights\n");
+            }
+            if(pin == 27) {
+                bellStartTime = now + (SWITCHES_TIMEOUT * 1000);
+                printf("set timeout for bell\n");
+            }
+
             set_gpio(pin, 1);
         } else if (strcasecmp(msg->payload, "off") == 0) {
-            set_timeout(0);
+            if(pin == 17) {
+                lightsStartTime = 0;
+            }
+            if(pin == 27) {
+                bellStartTime = 0;
+            }
+
             set_gpio(pin, 0);
         }
     }
+}
+
+volatile bool keep_running = false;
+void handle_sigint(int sig) {
+    printf("\nctrl-c detected\n");
+    keep_running = 0;
 }
 
 int main() {
@@ -168,22 +188,29 @@ int main() {
     mosquitto_message_callback_set(mosq, on_message);
 
     // Ustawienie obsługi sygnału alarmowego
-    signal(SIGALRM, alarm_handler);
+    signal(SIGINT, handle_sigint);
     
     // Uruchamiamy pętlę MQTT w tle
     mosquitto_loop_start(mosq);
 
-    // Główna pętla sprawdzająca flagę
-    while (1) {
-        if(timeout_set) {
-            printf("timeout for switches has been reached\n");
-            set_timeout(0);
-            
-            set_gpio(17, 0);
-            set_gpio(27, 0);
+    // Główna pętla sprawdzająca flagę ctrl-c
+    keep_running = true;
+    while (keep_running) {
+        unsigned long now = millis();
 
-            // Publikacja stanu OFF z retain
+        if(lightsStartTime != 0 && lightsStartTime < now) {
+            lightsStartTime = 0;
+            printf("lights off\n");
+
+            set_gpio(17, 0);
             mosquitto_publish(mosq, NULL, "gpio/17", 3, "off", 1, true);
+        }
+
+        if(bellStartTime != 0 && bellStartTime < now) {
+            bellStartTime = 0;
+            printf("bell off\n");
+
+            set_gpio(27, 0);
             mosquitto_publish(mosq, NULL, "gpio/27", 3, "off", 1, true);
         }
 
