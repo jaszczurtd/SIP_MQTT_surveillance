@@ -46,6 +46,13 @@ public class MQTTClient implements Constants {
                     Log.v(TAG, "MQTT connected: " + serverURI + (reconnect ? " (again)" : ""));
                     if(connectionCallback != null) {
                         connectionCallback.onConnected();
+                        try {
+                            client.subscribe(MQTT_LIGHTS_TOPIC, listener);
+                            client.subscribe(MQTT_BELL_TOPIC, listener);
+                        } catch (MqttException e) {
+                            String reason = e.getReasonCode() + " - " + e.getMessage();
+                            Log.e(TAG, "Error MQTT subscription: " + reason);
+                        }
                     }
                 }
 
