@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">SIP Client</string>
+    <string name="on">"ON"</string>
+    <string name="off">"OFF"</string>
+    <string name="ok">"OK"</string>
+    <string name="cancel">"Anuluj"</string>
+    <string name="error">"Błąd"</string>
+    <string name="exit">"Wyjście"</string>
+    <string name="no_internet_error">Aplikacja wymaga do działania połączenia z internetem.</string>
+    <string name="permissions">"Wymagane są wszystkie uprawnienia"</string>
+    <string name="linphone_init_error">"Błąd inicjalizacji Linphone: "</string>
+    <string name="linphone_connection_error">"Błąd połączenia: "</string>
+    <string name="linphone_connection_end">Rozłączono: "</string>
+    <string name="mqtt_login">Podaj dane MQTT"</string>
+    <string name="mqttt_connection_end">Rozłączono z MQTT</string>
+    <string name="user">"Użytkownik"</string>
+    <string name="pass">"Hasło"</string>
+
+</resources>
