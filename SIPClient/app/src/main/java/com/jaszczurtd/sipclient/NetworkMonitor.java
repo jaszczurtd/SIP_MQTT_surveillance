@@ -43,10 +43,6 @@ public class NetworkMonitor implements Constants{
     public void startMonitoring() {
         NetworkRequest request = new NetworkRequest.Builder().build();
         connectivityManager.registerNetworkCallback(request, networkCallback);
-
-        if(isConnected()) {
-            listener.onConnected();
-        }
     }
 
     public boolean isConnected() {

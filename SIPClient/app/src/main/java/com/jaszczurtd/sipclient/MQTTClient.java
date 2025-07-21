@@ -75,19 +75,17 @@ public class MQTTClient implements Constants {
                 }
             });
 
-            new Thread(() -> {
-                try {
-                    client.connect(options);
-                    client.subscribe(MQTT_LIGHTS_TOPIC, listener);
-                    client.subscribe(MQTT_BELL_TOPIC, listener);
-                } catch (MqttException e) {
-                    String reason = e.getReasonCode() + " - " + e.getMessage();
-                    Log.e(TAG, "Error MQTT connection: " + reason);
-                    if (connectionCallback != null) {
-                        connectionCallback.onConnectionFailed(reason);
-                    }
+            try {
+                client.connect(options);
+                client.subscribe(MQTT_LIGHTS_TOPIC, listener);
+                client.subscribe(MQTT_BELL_TOPIC, listener);
+            } catch (MqttException e) {
+                String reason = e.getReasonCode() + " - " + e.getMessage();
+                Log.e(TAG, "Error MQTT connection: " + reason);
+                if (connectionCallback != null) {
+                    connectionCallback.onConnectionFailed(reason);
                 }
-            }).start();
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
