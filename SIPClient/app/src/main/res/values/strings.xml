@@ -15,5 +15,10 @@
     <string name="mqttt_connection_end">Rozłączono z MQTT</string>
     <string name="user">"Użytkownik"</string>
     <string name="pass">"Hasło"</string>
+    <string name="disconnect">"Rozłącz"</string>
+    <string name="show_garage">"Pokaż garaż"</string>
+    <string name="show_home">"Pokaż dom"</string>
+    <string name="lights">"Światło"</string>
+    <string name="bell">"Dzwonek"</string>
 
 </resources>
