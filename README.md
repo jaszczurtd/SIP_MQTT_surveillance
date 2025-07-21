@@ -24,13 +24,16 @@
     | SIP (Linphone)      |<------ SIP over VPN ---->| linphone-daemon  |
     | MQTT (Paho)         |                          | Mosquitto Broker |
     +---------------------+                          +------------------+
+                ^
                 |
                 | MQTT (tcp://10.8.0.1)
+                | SIP over VPN
                 v
     +---------------------+
     |  Raspberry Pi 3     |
     |---------------------|
     | MQTT subscriber     |
+    | linphone-daemon     |
     | GPIO 17 -> light    |
     | GPIO 27 -> bell     |
     +---------------------+
@@ -60,7 +63,7 @@ These credentials are securely stored using `SharedPreferences` and reused autom
 
 ## 🧠 Logic Summary
 
-- Pressing **Call Home** or **Call Garage** initiates a SIP call.
+- Pressing **Call Home** or **Call Garage** in Android app initiates a SIP call.
 - When the call is established with `garage` (10.8.0.2), UI shows **light** and **bell** switches.
 - Switch state changes are published to MQTT and retained.
 - On app start, retained messages restore UI state automatically.
@@ -88,6 +91,8 @@ These credentials are securely stored using `SharedPreferences` and reused autom
 - Android Studio (Arctic Fox or newer)
 - SDK 31+
 - Network access to MQTT broker and SIP devices (typically via WireGuard VPN)
+
+note: pi3 MQTT client has to be run at least once from the console, in order to set MQTT user & password.
 
 📄 License
 

@@ -25,10 +25,13 @@ public class MQTTClient implements Constants {
 
     public MQTTClient(Context context, String broker, String username, String password,
                       IMqttMessageListener listener, MQTTStatusListener connectionListener) {
+
         connectionCallback = connectionListener;
         
         try {
             String clientId = TAG + System.currentTimeMillis();
+            Log.v(TAG, "clientID:" + clientId);
+
             client = new MqttClient(broker, clientId, null);
 
             MqttConnectOptions options = new MqttConnectOptions();
@@ -40,15 +43,22 @@ public class MQTTClient implements Constants {
             client.setCallback(new MqttCallbackExtended() {
                 @Override
                 public void connectComplete(boolean reconnect, String serverURI) {
-                    Log.v(TAG, "Połączono z brokerem: " + serverURI + (reconnect ? " (ponownie)" : ""));
+                    Log.v(TAG, "MQTT connected: " + serverURI + (reconnect ? " (again)" : ""));
                     if(connectionCallback != null) {
                         connectionCallback.onConnected();
+                        try {
+                            client.subscribe(MQTT_LIGHTS_TOPIC, listener);
+                            client.subscribe(MQTT_BELL_TOPIC, listener);
+                        } catch (MqttException e) {
+                            String reason = e.getReasonCode() + " - " + e.getMessage();
+                            Log.e(TAG, "Error MQTT subscription: " + reason);
+                        }
                     }
                 }
 
                 @Override
                 public void connectionLost(Throwable cause) {
-                    Log.v(TAG, "Utracono połączenie: " + cause.getMessage());
+                    Log.v(TAG, "MQTT connection lost: " + cause.getMessage());
                     if(connectionCallback != null) {
                         connectionCallback.onDisconnected();
                     }
@@ -56,12 +66,12 @@ public class MQTTClient implements Constants {
 
                 @Override
                 public void messageArrived(String topic, MqttMessage message) {
-                    Log.v(TAG, "Odebrano wiadomość: " + topic + " -> " + new String(message.getPayload()));
+                    Log.v(TAG, "MQTT message has been received: " + topic + " -> " + new String(message.getPayload()));
                 }
 
                 @Override
                 public void deliveryComplete(IMqttDeliveryToken token) {
-                    Log.v(TAG, "Wiadomość dostarczona");
+                    Log.v(TAG, "MQTT message has been delivered");
                 }
             });
 
@@ -72,7 +82,7 @@ public class MQTTClient implements Constants {
                     client.subscribe(MQTT_BELL_TOPIC, listener);
                 } catch (MqttException e) {
                     String reason = e.getReasonCode() + " - " + e.getMessage();
-                    Log.e(TAG, "Błąd połączenia MQTT: " + reason);
+                    Log.e(TAG, "Error MQTT connection: " + reason);
                     if (connectionCallback != null) {
                         connectionCallback.onConnectionFailed(reason);
                     }
@@ -93,6 +103,7 @@ public class MQTTClient implements Constants {
                 e.printStackTrace();
             }
         }
+        client = null;
     }
 
     public void publish(String topic, String payload) {

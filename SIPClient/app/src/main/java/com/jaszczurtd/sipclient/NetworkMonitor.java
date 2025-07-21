@@ -28,13 +28,13 @@ public class NetworkMonitor implements Constants{
         networkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(@NonNull Network network) {
-                Log.d(TAG, "Sieć dostępna");
+                Log.v(TAG, "Internet connection is available");
                 listener.onConnected();
             }
 
             @Override
             public void onLost(@NonNull Network network) {
-                Log.d(TAG, "Sieć niedostępna");
+                Log.d(TAG, "Internet connection is not available");
                 listener.onDisconnected();
             }
         };

@@ -1,7 +1,7 @@
 package com.jaszczurtd.sipclient;
 
 public interface Constants {
-    static final String TAG = "SIPClient";
+    static final String TAG = "SIPClientDebug";
     static final String HOME_USER = "sip:pi@10.8.0.1";
     static final String GARAGE_USER = "sip:pi@10.8.0.2";
     static final String MQTT_BROKER = "tcp://10.8.0.1:1883";
