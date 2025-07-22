@@ -290,48 +290,46 @@ public class MainActivity extends AppCompatActivity implements Constants {
             return;
         }
 
-        runOnUiThread(() -> {
-            lightListener = (btn, isChecked) -> {
-                setLightTo(isChecked);
-            };
-            switchLight.setOnCheckedChangeListener(lightListener);
+        lightListener = (btn, isChecked) -> {
+            setLightTo(isChecked);
+        };
+        switchLight.setOnCheckedChangeListener(lightListener);
 
-            bellListener = (btn, isChecked) -> {
-                setBellTo(isChecked);
-            };
-            switchBell.setOnCheckedChangeListener(bellListener);
+        bellListener = (btn, isChecked) -> {
+            setBellTo(isChecked);
+        };
+        switchBell.setOnCheckedChangeListener(bellListener);
 
-            toggleContainer.setVisibility(View.GONE);
+        toggleContainer.setVisibility(View.GONE);
 
-            mqttClient = new MQTTClient(
-                this,
-                MQTT_BROKER,
-                user, pass,
-                (topic, message) -> runOnUiThread(() -> {
-                    updateSwitchesFromBroker(topic, message);
-                }),
-                new MQTTClient.MQTTStatusListener() {
-                    @Override
-                    public void onConnected() {
-                        runOnUiThread(() -> {
-                            manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
-                        });
-                    }
+        mqttClient = new MQTTClient(
+            this,
+            MQTT_BROKER,
+            user, pass,
+            (topic, message) -> runOnUiThread(() -> {
+                updateSwitchesFromBroker(topic, message);
+            }),
+            new MQTTClient.MQTTStatusListener() {
+                @Override
+                public void onConnected() {
+                    runOnUiThread(() -> {
+                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
+                    });
+                }
 
-                    @Override
-                    public void onDisconnected() {
-                        runOnUiThread(() -> {
-                            toggleContainer.setVisibility(View.GONE);
-                            Toast.makeText(MainActivity.this, getString(R.string.mqttt_connection_end), Toast.LENGTH_SHORT).show();
-                        });
-                    }
+                @Override
+                public void onDisconnected() {
+                    runOnUiThread(() -> {
+                        toggleContainer.setVisibility(View.GONE);
+                        Toast.makeText(MainActivity.this, getString(R.string.mqttt_connection_end), Toast.LENGTH_SHORT).show();
+                    });
+                }
 
-                    @Override
-                    public void onConnectionFailed(String reason) {
-                        Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
-                    }
-                });
-        });
+                @Override
+                public void onConnectionFailed(String reason) {
+                    Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
+                }
+            });
     }
 
     void destroyMQTT() {
@@ -355,38 +353,36 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     void askForCredentials() {
-        runOnUiThread(() -> {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            builder.setTitle(getString(R.string.mqtt_login));
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(getString(R.string.mqtt_login));
 
-            LinearLayout layout = new LinearLayout(this);
-            layout.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
 
-            final EditText inputUser = new EditText(this);
-            inputUser.setHint(getString(R.string.user));
-            layout.addView(inputUser);
+        final EditText inputUser = new EditText(this);
+        inputUser.setHint(getString(R.string.user));
+        layout.addView(inputUser);
 
-            final EditText inputPass = new EditText(this);
-            inputPass.setHint(getString(R.string.pass));
-            inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-            layout.addView(inputPass);
+        final EditText inputPass = new EditText(this);
+        inputPass.setHint(getString(R.string.pass));
+        inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(inputPass);
 
-            builder.setView(layout);
+        builder.setView(layout);
 
-            builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
-                String user = inputUser.getText().toString();
-                String pass = inputPass.getText().toString();
-                prefs.edit()
-                        .putString(MQTT_USER, user)
-                        .putString(MQTT_PASS, pass)
-                        .apply();
+        builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
+            String user = inputUser.getText().toString();
+            String pass = inputPass.getText().toString();
+            prefs.edit()
+                    .putString(MQTT_USER, user)
+                    .putString(MQTT_PASS, pass)
+                    .apply();
 
-                setupMQTT(user, pass);
-            });
-
-            builder.setCancelable(false);
-            builder.show();
+            setupMQTT(user, pass);
         });
+
+        builder.setCancelable(false);
+        builder.show();
     }
 
     void manageMQTTSwitchesVisibility(Call call) {
