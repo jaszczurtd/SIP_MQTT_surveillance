@@ -16,7 +16,8 @@ public class MQTTClient implements Constants {
     private MqttClient client;
 
     private final MQTTClient.MQTTStatusListener connectionCallback;
-    
+    private final IMqttMessageListener MQTTlistener;
+
     public interface MQTTStatusListener {
         void onConnected();
         void onDisconnected();
@@ -27,6 +28,7 @@ public class MQTTClient implements Constants {
                       IMqttMessageListener listener, MQTTStatusListener connectionListener) {
 
         connectionCallback = connectionListener;
+        MQTTlistener = listener;
         
         try {
             String clientId = TAG + System.currentTimeMillis();
@@ -46,13 +48,8 @@ public class MQTTClient implements Constants {
                     Log.v(TAG, "MQTT connected: " + serverURI + (reconnect ? " (again)" : ""));
                     if(connectionCallback != null) {
                         connectionCallback.onConnected();
-                        try {
-                            client.subscribe(MQTT_LIGHTS_TOPIC, listener);
-                            client.subscribe(MQTT_BELL_TOPIC, listener);
-                        } catch (MqttException e) {
-                            String reason = e.getReasonCode() + " - " + e.getMessage();
-                            Log.e(TAG, "Error MQTT subscription: " + reason);
-                        }
+                        subscribeTo(MQTT_LIGHTS_TOPIC);
+                        subscribeTo(MQTT_BELL_TOPIC);
                     }
                 }
 
@@ -77,8 +74,6 @@ public class MQTTClient implements Constants {
 
             try {
                 client.connect(options);
-                client.subscribe(MQTT_LIGHTS_TOPIC, listener);
-                client.subscribe(MQTT_BELL_TOPIC, listener);
             } catch (MqttException e) {
                 String reason = e.getReasonCode() + " - " + e.getMessage();
                 Log.e(TAG, "Error MQTT connection: " + reason);
@@ -89,6 +84,16 @@ public class MQTTClient implements Constants {
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public void subscribeTo(String topic) {
+        try {
+            client.unsubscribe(topic);
+            client.subscribe(topic, MQTTlistener);
+        } catch (MqttException e) {
+            String reason = e.getReasonCode() + " - " + e.getMessage();
+            Log.e(TAG, "Error MQTT subscription: " + reason);
         }
     }
 

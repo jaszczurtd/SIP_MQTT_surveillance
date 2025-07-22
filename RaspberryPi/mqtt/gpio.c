@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 199309L
+
 #include <stdio.h>
 #include <string.h>
 #include <mosquitto.h>
@@ -11,6 +13,7 @@
 #include <signal.h>
 #include <time.h>
 #include <stdint.h>
+#include <strings.h>
 
 #define GPIO_OFFSET 0x00200000
 #define BLOCK_SIZE 4096

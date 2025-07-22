@@ -39,7 +39,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
     CompoundButton.OnCheckedChangeListener lightListener, bellListener;
     LinearLayout toggleContainer;
     MQTTClient mqttClient;
-    boolean MQTTIsActive;
     NetworkMonitor networkMonitor;
     SharedPreferences prefs;
 
@@ -106,15 +105,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             @Override
             public void onConnected() {
                 Log.v(TAG, "Internet is connected");
-
-                prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
-                String user = prefs.getString(MQTT_USER, null);
-                String pass = prefs.getString(MQTT_PASS, null);
-                if (user != null && pass != null) {
-                    setupMQTT(user, pass);
-                } else {
-                    askForCredentials();
-                }
             }
 
             @Override
@@ -126,6 +116,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
             handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
+        }
+
+        prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
+        String user = prefs.getString(MQTT_USER, null);
+        String pass = prefs.getString(MQTT_PASS, null);
+        if (user != null && pass != null) {
+            setupMQTT(user, pass);
+        } else {
+            askForCredentials();
         }
     }
 
@@ -192,11 +191,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void makeCall(String user) {
         if (!networkMonitor.isConnected()) {
-            callHomeButton.setVisibility(View.GONE);
-            callGarageButton.setVisibility(View.GONE);
-            hangupButton.setVisibility(View.GONE);
-            toggleContainer.setVisibility(View.GONE);
-
             handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
             return;
         }
@@ -291,12 +285,11 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     void setupMQTT(String user, String pass) {
-        if((mqttClient != null && mqttClient.isConnected()) || MQTTIsActive) {
+        if((mqttClient != null && mqttClient.isConnected())) {
             Log.v(TAG, "MQTT client already connected and active");
             return;
         }
 
-        MQTTIsActive = true;
         runOnUiThread(() -> {
             lightListener = (btn, isChecked) -> {
                 setLightTo(isChecked);
@@ -351,7 +344,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             mqttClient.stop();
             mqttClient = null;
         }
-        MQTTIsActive = false;
     }
 
     void setLightTo(boolean isOn) {

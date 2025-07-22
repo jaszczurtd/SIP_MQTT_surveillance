@@ -45,6 +45,7 @@ public class NetworkMonitor implements Constants{
         connectivityManager.registerNetworkCallback(request, networkCallback);
     }
 
+    /** @noinspection BooleanMethodIsAlwaysInverted*/
     public boolean isConnected() {
         NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(connectivityManager.getActiveNetwork());
         if (caps != null) {
