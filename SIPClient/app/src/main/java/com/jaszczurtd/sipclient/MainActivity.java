@@ -321,13 +321,14 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 public void onDisconnected() {
                     runOnUiThread(() -> {
                         toggleContainer.setVisibility(View.GONE);
-                        Toast.makeText(MainActivity.this, getString(R.string.mqttt_connection_end), Toast.LENGTH_SHORT).show();
                     });
                 }
 
                 @Override
                 public void onConnectionFailed(String reason) {
-                    Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
+                    });
                 }
             });
     }
