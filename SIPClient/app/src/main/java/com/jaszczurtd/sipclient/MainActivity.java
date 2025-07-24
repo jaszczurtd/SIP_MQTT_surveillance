@@ -90,16 +90,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
         toggleContainer = findViewById(R.id.toggleContainer);
         switchBell = findViewById(R.id.switchBell);
 
-        if (!checkPermissions()) {
-            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
-        } else {
-            initLinphone();
-        }
-
-        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
-        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
-        hangupButton.setOnClickListener(v -> hangUp());
-
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
             public void onConnected() {
@@ -114,8 +104,18 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
+            handleNoNetwork(this::finish);
         }
+
+        if (!checkPermissions()) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
+        } else {
+            initLinphone();
+        }
+
+        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
+        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
+        hangupButton.setOnClickListener(v -> hangUp());
 
         prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
         String user = prefs.getString(MQTT_USER, null);
@@ -174,10 +174,10 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 }
             }
 
-            linphoneCore.start();
             linphoneCore.setNativeVideoWindowId(remoteVideoView);
-
             linphoneCore.addListener(new LinphoneListener());
+
+            linphoneCore.start();
 
         } catch (Exception e) {
             Log.e(TAG, "linphone error:" + e);
@@ -187,7 +187,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void makeCall(String user) {
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
+            handleNoNetwork(this::finish);
             return;
         }
 
@@ -354,11 +354,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     void setLightTo(boolean isOn) {
-        mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        if(mqttClient != null) {
+            mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        }
     }
 
     void setBellTo(boolean isOn) {
-        mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        if(mqttClient != null) {
+            mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        }
     }
 
     void askForCredentials() {
