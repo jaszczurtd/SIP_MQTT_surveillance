@@ -29,7 +29,6 @@ import org.linphone.core.*;
 
 import java.util.Objects;
 
-@SuppressWarnings("CallToPrintStackTrace")
 public class MainActivity extends AppCompatActivity implements Constants {
     AlertDialog alert;
     Core linphoneCore;
@@ -181,11 +180,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
             linphoneCore.addListener(new LinphoneListener());
 
         } catch (Exception e) {
-            e.printStackTrace();
-
+            Log.e(TAG, "linphone error:" + e);
             Toast.makeText(this, getString(R.string.linphone_init_error) + e.getMessage(), Toast.LENGTH_LONG).show();
-
-            Log.e(TAG, "linphone error:" + e.getMessage());
         }
     }
 
@@ -223,34 +219,43 @@ public class MainActivity extends AppCompatActivity implements Constants {
             hangupButton.setVisibility(View.VISIBLE);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "linphone error:" + e);
             Toast.makeText(this, getString(R.string.linphone_connection_error) + e.getMessage(), Toast.LENGTH_SHORT).show();
             setLightTo(false);
         }
     }
 
     private void hangUp() {
-        if (linphoneCore.getCurrentCall() != null) {
-            linphoneCore.getCurrentCall().terminate();
+        Call call = linphoneCore.getCurrentCall();
+        if (call != null) {
+            manageMQTTSwitchesVisibility(call, false);
+            call.terminate();
         }
         callHomeButton.setVisibility(View.VISIBLE);
         callGarageButton.setVisibility(View.VISIBLE);
         hangupButton.setVisibility(View.GONE);
 
         toggleContainer.setVisibility(View.GONE);
-        setLightTo(false);
     }
 
     @Override
     public void onDestroy() {
-        if (linphoneCore != null) {
-            linphoneCore.stop();
-            linphoneCore = null;
+        try {
+            if (linphoneCore != null) {
+                linphoneCore.stop();
+                linphoneCore = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "linphone error:" + e);
         }
 
         destroyMQTT();
 
-        networkMonitor.stopMonitoring();
+        try {
+            networkMonitor.stopMonitoring();
+        } catch (Exception e) {
+            Log.e(TAG, "network monitor error:" + e);
+        }
 
         super.onDestroy();
     }
@@ -262,7 +267,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 switch (state) {
                     case Connected:
                         remoteVideoView.setVisibility(View.VISIBLE);
-                        manageMQTTSwitchesVisibility(call);
+                        manageMQTTSwitchesVisibility(call, true);
                         break;
                     case End:
                     case Error:
@@ -274,10 +279,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         hangupButton.setVisibility(View.GONE);
                         remoteVideoView.setVisibility(View.GONE);
 
-                        if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
-                            toggleContainer.setVisibility(View.GONE);
-                            setLightTo(false);
-                        }
+                        manageMQTTSwitchesVisibility(call, false);
                         break;
                 }
             });
@@ -313,7 +315,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 @Override
                 public void onConnected() {
                     runOnUiThread(() -> {
-                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
+                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall(), true);
+                        mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
+                        mqttClient.subscribeTo(MQTT_BELL_TOPIC);
                     });
                 }
 
@@ -336,12 +340,16 @@ public class MainActivity extends AppCompatActivity implements Constants {
     void destroyMQTT() {
         Log.v(TAG, "destroy MQTT client");
 
-        switchLight.setOnCheckedChangeListener(null);
-        switchBell.setOnCheckedChangeListener(null);
+        try {
+            switchLight.setOnCheckedChangeListener(null);
+            switchBell.setOnCheckedChangeListener(null);
 
-        if(mqttClient != null) {
-            mqttClient.stop();
-            mqttClient = null;
+            if(mqttClient != null) {
+                mqttClient.stop();
+                mqttClient = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "linphone error:" + e);
         }
     }
 
@@ -386,38 +394,50 @@ public class MainActivity extends AppCompatActivity implements Constants {
         builder.show();
     }
 
-    void manageMQTTSwitchesVisibility(Call call) {
-        if(call != null) {
-            Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
-            if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
-                setLightTo(true);
-                toggleContainer.setVisibility(View.VISIBLE);
+    void manageMQTTSwitchesVisibility(Call call, boolean state) {
+        try {
+            if(call != null) {
+                Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
+                if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
+                    if(state) {
+                        setLightTo(true);
+                        toggleContainer.setVisibility(View.VISIBLE);
+                    } else {
+                        setLightTo(false);
+                        toggleContainer.setVisibility(View.GONE);
+                    }
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "stwitches visibility problem: " + e);
         }
     }
 
     void updateSwitchesFromBroker(String topic, MqttMessage message) {
-        Log.v(TAG, "Broker update: " + topic + " message:" + message.toString());
+        try {
+            Log.v(TAG, "Broker update: " + topic + " message:" + message.toString());
 
-        boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
-        if (topic.equals(MQTT_LIGHTS_TOPIC)) {
-            if(switchLight.isChecked() != isOn) {
-                Log.v(TAG, "set lights to:" + isOn);
+            boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
+            if (topic.equals(MQTT_LIGHTS_TOPIC)) {
+                if(switchLight.isChecked() != isOn) {
+                    Log.v(TAG, "set lights to:" + isOn);
 
-                switchLight.setOnCheckedChangeListener(null);
-                switchLight.setChecked(isOn);
-                switchLight.setOnCheckedChangeListener(lightListener);
+                    switchLight.setOnCheckedChangeListener(null);
+                    switchLight.setChecked(isOn);
+                    switchLight.setOnCheckedChangeListener(lightListener);
+                }
             }
-        }
-        if (topic.equals(MQTT_BELL_TOPIC)) {
-            if(switchBell.isChecked() != isOn) {
-                Log.v(TAG, "set bell to:" + isOn);
+            if (topic.equals(MQTT_BELL_TOPIC)) {
+                if(switchBell.isChecked() != isOn) {
+                    Log.v(TAG, "set bell to:" + isOn);
 
-                switchBell.setOnCheckedChangeListener(null);
-                switchBell.setChecked(isOn);
-                switchBell.setOnCheckedChangeListener(bellListener);
+                    switchBell.setOnCheckedChangeListener(null);
+                    switchBell.setChecked(isOn);
+                    switchBell.setOnCheckedChangeListener(bellListener);
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "update switches from broker problem:" + e);
         }
-
     }
 }
