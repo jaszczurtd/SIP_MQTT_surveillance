@@ -355,13 +355,13 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     void setLightTo(boolean isOn) {
         if(mqttClient != null) {
-            mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+            mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF, true, () -> { });
         }
     }
 
     void setBellTo(boolean isOn) {
         if(mqttClient != null) {
-            mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+            mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF, true, () -> {  });
         }
     }
 
