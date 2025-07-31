@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.telephony.ims.RegistrationManager;
 import android.text.InputType;
 import android.util.Log;
 import android.view.TextureView;
@@ -160,6 +161,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             c.setInt("sip", "inc_timeout", 600);
             c.setInt("sip", "keepalive_period", 30000);
             c.setInt("net", "force_ice_disablement", 0);
+            c.setInt("net", "adaptive_rate_control", 1);  // Włącz adaptację
 
             linphoneCore = Factory.instance().createCoreWithConfig(c, this);
 
@@ -168,6 +170,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
             linphoneCore.setVideoDevice("Camera");
 
             linphoneCore.setNortpTimeout(600);
+            linphoneCore.setUploadBandwidth(0);
+            linphoneCore.setDownloadBandwidth(0);
+
 
             for (PayloadType pt : linphoneCore.getVideoPayloadTypes()) {
                 if ("H264".equals(pt.getMimeType())) {
@@ -177,6 +182,28 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
             linphoneCore.setNativeVideoWindowId(remoteVideoView);
             linphoneCore.addListener(new LinphoneListener());
+
+            String username = "android-marcin";
+            String password = "-";
+            String domain = "-";
+
+            AuthInfo user = Factory.instance().createAuthInfo(username, null, password, null, null, domain, null);
+            AccountParams accountParams = linphoneCore.createAccountParams();
+            String sipAddress = "sip:" + username + "@" + domain;
+            Address identity = Factory.instance().createAddress(sipAddress);
+            Log.v(TAG, "login for address " + sipAddress);
+            accountParams.setIdentityAddress(identity);
+            Address address = Factory.instance().createAddress("sip:" + domain);
+            if(address != null) {
+                address.setTransport(TransportType.Tcp);
+                accountParams.setServerAddress(address);
+                accountParams.setRegisterEnabled(true);
+            }
+            Account account = linphoneCore.createAccount(accountParams);
+            linphoneCore.addAuthInfo(user);
+            linphoneCore.addAccount(account);
+            linphoneCore.setDefaultAccount(account);
+            linphoneCore.setUserAgent(username, TAG);
 
             linphoneCore.start();
 
@@ -226,6 +253,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
     }
 
+    void linphoneLogout() {
+        Account account = linphoneCore.getDefaultAccount();
+        if(account != null) {
+            AccountParams accountParams = account.getParams().clone();
+            accountParams.setRegisterEnabled(false);
+            account.setParams(accountParams);
+        }
+    }
+
     private void hangUp() {
         Call call = linphoneCore.getCurrentCall();
         if (call != null) {
@@ -243,6 +279,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     public void onDestroy() {
         try {
             if (linphoneCore != null) {
+                linphoneLogout();
                 linphoneCore.stop();
                 linphoneCore = null;
             }
@@ -262,6 +299,29 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     public class LinphoneListener extends CoreListenerStub {
+        @Override
+        public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
+            runOnUiThread(() -> {
+                Log.v(TAG, "proxy:" + proxyConfig.getDomain() + " " + proxyConfig.getContactParameters());
+                Log.v(TAG, message);
+                switch(state) {
+                    case Progress:
+                        Log.v(TAG, "linphone registration: progress");
+                        break;
+                    case Ok:
+                        Log.v(TAG, "linphone registration: ok");
+                        break;
+                    case None:
+                        Log.v(TAG, "linphone registration: none");
+                        break;
+                    default:
+                        Log.v(TAG, "linphone registration state:" + state);
+                        break;
+                }
+
+            });
+        }
+
         @Override
         public void onCallStateChanged(@NonNull Core core, @NonNull Call call, Call.State state, @NonNull String message) {
             runOnUiThread(() -> {
