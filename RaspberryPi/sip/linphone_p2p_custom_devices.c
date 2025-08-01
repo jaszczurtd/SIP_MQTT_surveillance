@@ -277,7 +277,7 @@ int main(int argc, char *argv[]) {
     linphone_core_enable_forced_ice_relay(lc, false);
     linphone_core_set_nortp_timeout(lc, 600);
 
-    linphone_core_enable_adaptive_rate_control(lc, false);
+    linphone_core_enable_adaptive_rate_control(lc, true);
     linphone_core_set_download_bandwidth(lc, 300);
     linphone_core_set_upload_bandwidth(lc, 300);
 
