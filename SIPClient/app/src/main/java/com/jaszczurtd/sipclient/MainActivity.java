@@ -71,33 +71,37 @@ public class MainActivity extends AppCompatActivity implements Constants {
     }
 
     public void setSipStatus(Connection status) {
-        switch (status) {
-            case CONN_NONE:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_red);
-                break;
-            case CONN_PROGRESS:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_yellow);
-                break;
-            case CONN_OK:
-            default:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_green);
-                break;
-        }
+        runOnUiThread(() -> {
+            switch (status) {
+                case CONN_NONE:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_red);
+                    break;
+                case CONN_PROGRESS:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                    break;
+                case CONN_OK:
+                default:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_green);
+                    break;
+            }
+        });
     }
 
     public void setMQTTStatus(Connection status) {
-        switch (status) {
-            case CONN_NONE:
-                mqttStatusDot.setBackgroundResource(R.drawable.circle_red);
-                break;
-            case CONN_PROGRESS:
-                mqttStatusDot.setBackgroundResource(R.drawable.circle_yellow);
-                break;
-            case CONN_OK:
-            default:
-                mqttStatusDot.setBackgroundResource(R.drawable.circle_green);
-                break;
-        }
+        runOnUiThread(() -> {
+            switch (status) {
+                case CONN_NONE:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_red);
+                    break;
+                case CONN_PROGRESS:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                    break;
+                case CONN_OK:
+                default:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_green);
+                    break;
+            }
+        });
     }
     boolean notEmpty(String s) {
         return s != null && !s.isEmpty();
@@ -383,20 +387,18 @@ public class MainActivity extends AppCompatActivity implements Constants {
     public class LinphoneListener extends CoreListenerStub {
         @Override
         public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
-            runOnUiThread(() -> {
-                Log.v(TAG, message);
-                switch(state) {
-                    case Progress:
-                        setSipStatus(CONN_PROGRESS);
-                        break;
-                    case Ok:
-                        setSipStatus(CONN_OK);
-                        break;
-                    default:
-                        setSipStatus(CONN_NONE);
-                        break;
-                }
-            });
+            Log.v(TAG, message);
+            switch(state) {
+                case Progress:
+                    setSipStatus(CONN_PROGRESS);
+                    break;
+                case Ok:
+                    setSipStatus(CONN_OK);
+                    break;
+                default:
+                    setSipStatus(CONN_NONE);
+                    break;
+            }
         }
 
         @Override
@@ -440,8 +442,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
             new MQTTClient.MQTTStatusListener() {
                 @Override
                 public void onConnected() {
+                    setMQTTStatus(CONN_OK);
                     runOnUiThread(() -> {
-                        setMQTTStatus(CONN_OK);
                         Call c = null;
                         if(linphoneCore != null) {
                             c = linphoneCore.getCurrentCall();
@@ -455,24 +457,22 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
                 @Override
                 public void onProgress() {
-                    runOnUiThread(() -> {
-                        setMQTTStatus(CONN_PROGRESS);
-                    });
+                    setMQTTStatus(CONN_PROGRESS);
                 }
 
                 @Override
                 public void onDisconnected() {
+                    setMQTTStatus(CONN_NONE);
                     runOnUiThread(() -> {
                         toggleContainer.setVisibility(View.GONE);
-                        setMQTTStatus(CONN_NONE);
                     });
                 }
 
                 @Override
                 public void onConnectionFailed(String reason) {
+                    setMQTTStatus(CONN_NONE);
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
-                        setMQTTStatus(CONN_NONE);
                     });
                 }
             });
