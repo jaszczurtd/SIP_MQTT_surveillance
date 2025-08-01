@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.telephony.ims.RegistrationManager;
 import android.text.InputType;
 import android.util.Log;
 import android.view.TextureView;
@@ -29,7 +30,6 @@ import org.linphone.core.*;
 
 import java.util.Objects;
 
-@SuppressWarnings("CallToPrintStackTrace")
 public class MainActivity extends AppCompatActivity implements Constants {
     AlertDialog alert;
     Core linphoneCore;
@@ -91,16 +91,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
         toggleContainer = findViewById(R.id.toggleContainer);
         switchBell = findViewById(R.id.switchBell);
 
-        if (!checkPermissions()) {
-            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
-        } else {
-            initLinphone();
-        }
-
-        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
-        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
-        hangupButton.setOnClickListener(v -> hangUp());
-
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
             public void onConnected() {
@@ -115,14 +105,25 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
+            handleNoNetwork(this::finish);
         }
+
+        if (!checkPermissions()) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
+        } else {
+            initLinphone();
+        }
+
+        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
+        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
+        hangupButton.setOnClickListener(v -> hangUp());
 
         prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
         String user = prefs.getString(MQTT_USER, null);
         String pass = prefs.getString(MQTT_PASS, null);
-        if (user != null && pass != null) {
-            setupMQTT(user, pass);
+        String ipbroker = prefs.getString(MQTT_BROKER_IP, null);
+        if (user != null && pass != null && ipbroker != null) {
+            setupMQTT(user, pass, ipbroker);
         } else {
             askForCredentials();
         }
@@ -160,6 +161,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             c.setInt("sip", "inc_timeout", 600);
             c.setInt("sip", "keepalive_period", 30000);
             c.setInt("net", "force_ice_disablement", 0);
+            c.setInt("net", "adaptive_rate_control", 1);  // Włącz adaptację
 
             linphoneCore = Factory.instance().createCoreWithConfig(c, this);
 
@@ -168,6 +170,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
             linphoneCore.setVideoDevice("Camera");
 
             linphoneCore.setNortpTimeout(600);
+            linphoneCore.setUploadBandwidth(0);
+            linphoneCore.setDownloadBandwidth(0);
+
 
             for (PayloadType pt : linphoneCore.getVideoPayloadTypes()) {
                 if ("H264".equals(pt.getMimeType())) {
@@ -175,23 +180,42 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 }
             }
 
-            linphoneCore.start();
             linphoneCore.setNativeVideoWindowId(remoteVideoView);
-
             linphoneCore.addListener(new LinphoneListener());
 
+            String username = "android-marcin";
+            String password = "-";
+            String domain = "-";
+
+            AuthInfo user = Factory.instance().createAuthInfo(username, null, password, null, null, domain, null);
+            AccountParams accountParams = linphoneCore.createAccountParams();
+            String sipAddress = "sip:" + username + "@" + domain;
+            Address identity = Factory.instance().createAddress(sipAddress);
+            Log.v(TAG, "login for address " + sipAddress);
+            accountParams.setIdentityAddress(identity);
+            Address address = Factory.instance().createAddress("sip:" + domain);
+            if(address != null) {
+                address.setTransport(TransportType.Tcp);
+                accountParams.setServerAddress(address);
+                accountParams.setRegisterEnabled(true);
+            }
+            Account account = linphoneCore.createAccount(accountParams);
+            linphoneCore.addAuthInfo(user);
+            linphoneCore.addAccount(account);
+            linphoneCore.setDefaultAccount(account);
+            linphoneCore.setUserAgent(username, TAG);
+
+            linphoneCore.start();
+
         } catch (Exception e) {
-            e.printStackTrace();
-
+            Log.e(TAG, "linphone error:" + e);
             Toast.makeText(this, getString(R.string.linphone_init_error) + e.getMessage(), Toast.LENGTH_LONG).show();
-
-            Log.e(TAG, "linphone error:" + e.getMessage());
         }
     }
 
     private void makeCall(String user) {
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(() -> android.os.Process.killProcess(android.os.Process.myPid()));
+            handleNoNetwork(this::finish);
             return;
         }
 
@@ -223,46 +247,88 @@ public class MainActivity extends AppCompatActivity implements Constants {
             hangupButton.setVisibility(View.VISIBLE);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "linphone error:" + e);
             Toast.makeText(this, getString(R.string.linphone_connection_error) + e.getMessage(), Toast.LENGTH_SHORT).show();
             setLightTo(false);
         }
     }
 
+    void linphoneLogout() {
+        Account account = linphoneCore.getDefaultAccount();
+        if(account != null) {
+            AccountParams accountParams = account.getParams().clone();
+            accountParams.setRegisterEnabled(false);
+            account.setParams(accountParams);
+        }
+    }
+
     private void hangUp() {
-        if (linphoneCore.getCurrentCall() != null) {
-            linphoneCore.getCurrentCall().terminate();
+        Call call = linphoneCore.getCurrentCall();
+        if (call != null) {
+            manageMQTTSwitchesVisibility(call, false);
+            call.terminate();
         }
         callHomeButton.setVisibility(View.VISIBLE);
         callGarageButton.setVisibility(View.VISIBLE);
         hangupButton.setVisibility(View.GONE);
 
         toggleContainer.setVisibility(View.GONE);
-        setLightTo(false);
     }
 
     @Override
     public void onDestroy() {
-        if (linphoneCore != null) {
-            linphoneCore.stop();
-            linphoneCore = null;
+        try {
+            if (linphoneCore != null) {
+                linphoneLogout();
+                linphoneCore.stop();
+                linphoneCore = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "linphone error:" + e);
         }
 
         destroyMQTT();
 
-        networkMonitor.stopMonitoring();
+        try {
+            networkMonitor.stopMonitoring();
+        } catch (Exception e) {
+            Log.e(TAG, "network monitor error:" + e);
+        }
 
         super.onDestroy();
     }
 
     public class LinphoneListener extends CoreListenerStub {
         @Override
+        public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
+            runOnUiThread(() -> {
+                Log.v(TAG, "proxy:" + proxyConfig.getDomain() + " " + proxyConfig.getContactParameters());
+                Log.v(TAG, message);
+                switch(state) {
+                    case Progress:
+                        Log.v(TAG, "linphone registration: progress");
+                        break;
+                    case Ok:
+                        Log.v(TAG, "linphone registration: ok");
+                        break;
+                    case None:
+                        Log.v(TAG, "linphone registration: none");
+                        break;
+                    default:
+                        Log.v(TAG, "linphone registration state:" + state);
+                        break;
+                }
+
+            });
+        }
+
+        @Override
         public void onCallStateChanged(@NonNull Core core, @NonNull Call call, Call.State state, @NonNull String message) {
             runOnUiThread(() -> {
                 switch (state) {
                     case Connected:
                         remoteVideoView.setVisibility(View.VISIBLE);
-                        manageMQTTSwitchesVisibility(call);
+                        manageMQTTSwitchesVisibility(call, true);
                         break;
                     case End:
                     case Error:
@@ -274,17 +340,14 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         hangupButton.setVisibility(View.GONE);
                         remoteVideoView.setVisibility(View.GONE);
 
-                        if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
-                            toggleContainer.setVisibility(View.GONE);
-                            setLightTo(false);
-                        }
+                        manageMQTTSwitchesVisibility(call, false);
                         break;
                 }
             });
         }
     }
 
-    void setupMQTT(String user, String pass) {
+    void setupMQTT(String user, String pass, String ipbroker) {
         if((mqttClient != null && mqttClient.isConnected())) {
             Log.v(TAG, "MQTT client already connected and active");
             return;
@@ -304,7 +367,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         mqttClient = new MQTTClient(
             this,
-            MQTT_BROKER,
+            ipbroker,
             user, pass,
             (topic, message) -> runOnUiThread(() -> {
                 updateSwitchesFromBroker(topic, message);
@@ -313,7 +376,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 @Override
                 public void onConnected() {
                     runOnUiThread(() -> {
-                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall());
+                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall(), true);
+                        mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
+                        mqttClient.subscribeTo(MQTT_BELL_TOPIC);
                     });
                 }
 
@@ -336,21 +401,29 @@ public class MainActivity extends AppCompatActivity implements Constants {
     void destroyMQTT() {
         Log.v(TAG, "destroy MQTT client");
 
-        switchLight.setOnCheckedChangeListener(null);
-        switchBell.setOnCheckedChangeListener(null);
+        try {
+            switchLight.setOnCheckedChangeListener(null);
+            switchBell.setOnCheckedChangeListener(null);
 
-        if(mqttClient != null) {
-            mqttClient.stop();
-            mqttClient = null;
+            if(mqttClient != null) {
+                mqttClient.stop();
+                mqttClient = null;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "linphone error:" + e);
         }
     }
 
     void setLightTo(boolean isOn) {
-        mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        if(mqttClient != null) {
+            mqttClient.publish(MQTT_LIGHTS_TOPIC, isOn ? MQTT_ON : MQTT_OFF, true, () -> { });
+        }
     }
 
     void setBellTo(boolean isOn) {
-        mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF);
+        if(mqttClient != null) {
+            mqttClient.publish(MQTT_BELL_TOPIC, isOn ? MQTT_ON : MQTT_OFF, true, () -> {  });
+        }
     }
 
     void askForCredentials() {
@@ -359,6 +432,10 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
+
+        final EditText ipbroker = new EditText(this);
+        ipbroker.setHint(getString(R.string.ipbroker));
+        layout.addView(ipbroker);
 
         final EditText inputUser = new EditText(this);
         inputUser.setHint(getString(R.string.user));
@@ -374,50 +451,64 @@ public class MainActivity extends AppCompatActivity implements Constants {
         builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
             String user = inputUser.getText().toString();
             String pass = inputPass.getText().toString();
+            String broker = ipbroker.getText().toString();
             prefs.edit()
                     .putString(MQTT_USER, user)
                     .putString(MQTT_PASS, pass)
+                    .putString(MQTT_BROKER_IP, broker)
                     .apply();
 
-            setupMQTT(user, pass);
+            setupMQTT(user, pass, broker);
         });
 
         builder.setCancelable(false);
         builder.show();
     }
 
-    void manageMQTTSwitchesVisibility(Call call) {
-        if(call != null) {
-            Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
-            if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
-                setLightTo(true);
-                toggleContainer.setVisibility(View.VISIBLE);
+    void manageMQTTSwitchesVisibility(Call call, boolean state) {
+        try {
+            if(call != null) {
+                Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
+                if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
+                    if(state) {
+                        setLightTo(true);
+                        toggleContainer.setVisibility(View.VISIBLE);
+                    } else {
+                        setLightTo(false);
+                        toggleContainer.setVisibility(View.GONE);
+                    }
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "stwitches visibility problem: " + e);
         }
     }
 
     void updateSwitchesFromBroker(String topic, MqttMessage message) {
-        Log.v(TAG, "Broker update: " + topic + " message:" + message.toString());
+        try {
+            Log.v(TAG, "Broker update: " + topic + " message:" + message.toString());
 
-        boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
-        if (topic.equals(MQTT_LIGHTS_TOPIC)) {
-            if(switchLight.isChecked() != isOn) {
-                Log.v(TAG, "set lights to:" + isOn);
+            boolean isOn = new String(message.getPayload()).equalsIgnoreCase(MQTT_ON);
+            if (topic.equals(MQTT_LIGHTS_TOPIC)) {
+                if(switchLight.isChecked() != isOn) {
+                    Log.v(TAG, "set lights to:" + isOn);
 
-                switchLight.setOnCheckedChangeListener(null);
-                switchLight.setChecked(isOn);
-                switchLight.setOnCheckedChangeListener(lightListener);
+                    switchLight.setOnCheckedChangeListener(null);
+                    switchLight.setChecked(isOn);
+                    switchLight.setOnCheckedChangeListener(lightListener);
+                }
             }
-        }
-        if (topic.equals(MQTT_BELL_TOPIC)) {
-            if(switchBell.isChecked() != isOn) {
-                Log.v(TAG, "set bell to:" + isOn);
+            if (topic.equals(MQTT_BELL_TOPIC)) {
+                if(switchBell.isChecked() != isOn) {
+                    Log.v(TAG, "set bell to:" + isOn);
 
-                switchBell.setOnCheckedChangeListener(null);
-                switchBell.setChecked(isOn);
-                switchBell.setOnCheckedChangeListener(bellListener);
+                    switchBell.setOnCheckedChangeListener(null);
+                    switchBell.setChecked(isOn);
+                    switchBell.setOnCheckedChangeListener(bellListener);
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "update switches from broker problem:" + e);
         }
-
     }
 }

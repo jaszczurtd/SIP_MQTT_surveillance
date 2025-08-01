@@ -15,6 +15,7 @@
     <string name="mqttt_connection_end">Rozłączono z MQTT</string>
     <string name="user">"Użytkownik"</string>
     <string name="pass">"Hasło"</string>
+    <string name="ipbroker">Adres IP brokera</string>
     <string name="disconnect">"Rozłącz"</string>
     <string name="show_garage">"Pokaż garaż"</string>
     <string name="show_home">"Pokaż dom"</string>

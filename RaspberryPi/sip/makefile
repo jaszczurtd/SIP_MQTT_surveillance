@@ -2,6 +2,7 @@
 # Kompiluje jedną z dwóch wersji – tylko wtedy, gdy jawnie o nią poprosisz:
 #   make m32   -> build/sip_receiver_armhf   (32‑bit)
 #   make m64   -> build/sip_receiver_aarch64 (64‑bit)
+#   make mint  -> build/sip_receiver_mint    (64-bit amd64)
 #   make clean    -> usuwa katalog build/
 # -----------------------------------------------------------------------
 
@@ -25,9 +26,15 @@ BIN_ARMHF        = $(OUTDIR)/sip_receiver_armhf
 CC_AARCH64      ?= aarch64-linux-gnu-gcc
 LDFLAGS_AARCH64  = -L/usr/lib/aarch64-linux-gnu
 BIN_AARCH64      = $(OUTDIR)/sip_receiver_aarch64
+
+### MINT AMD64 – natywny dla PC z Linux Mint ############################
+CC_MINT         ?= gcc
+LDFLAGS_MINT     = -L/usr/lib/x86_64-linux-gnu
+BIN_MINT         = $(OUTDIR)/sip_receiver_mint
 #######################################################################
 
-.PHONY: m32 m64 clean
+
+.PHONY: m32 m64 mint clean
 
 $(OUTDIR):
 	@mkdir -p $@
@@ -41,11 +48,17 @@ $(BIN_ARMHF): $(SRC) | $(OUTDIR)
 $(BIN_AARCH64): $(SRC) | $(OUTDIR)
 	$(CC_AARCH64) $(CFLAGS) $(INC) $< -o $@ $(LDFLAGS_AARCH64) $(LIBS)
 	@echo "✔  zbudowano 64‑bit (aarch64) =>  $@"
+# ------------ 64-bit amd64 --------------------------------------------
+$(BIN_MINT): $(SRC) | $(OUTDIR)
+	$(CC_MINT) $(CFLAGS) $(INC) $< -o $@ $(LDFLAGS_MINT) $(LIBS)
+	@echo "✔  zbudowano natywnie (Mint amd64) =>  $@"
 
 # Publiczne cele, o które wołasz w linii poleceń
 m32: $(BIN_ARMHF)
 
 m64: $(BIN_AARCH64)
+
+mint: $(BIN_MINT)
 
 clean:
 	rm -rf $(OUTDIR)
