@@ -1,5 +1,7 @@
 package com.jaszczurtd.sipclient;
 
+import static com.jaszczurtd.sipclient.Constants.SIPConnection.*;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
@@ -18,6 +20,7 @@ import android.text.InputType;
 import android.util.Log;
 import android.view.TextureView;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
@@ -40,6 +43,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     MQTTClient mqttClient;
     NetworkMonitor networkMonitor;
     SharedPreferences prefs;
+    View sipStatusDot;
     private String sipUser, sipDomain, sipPassword;
 
     private static final String[] PERMISSIONS = {
@@ -65,6 +69,21 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 .show();
     }
 
+    public void setSipStatus(SIPConnection status) {
+        switch (status) {
+            case CONN_NONE:
+                sipStatusDot.setBackgroundResource(R.drawable.circle_red);
+                break;
+            case CONN_PROGRESS:
+                sipStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                break;
+            case CONN_OK:
+            default:
+                sipStatusDot.setBackgroundResource(R.drawable.circle_green);
+                break;
+        }
+    }
+
     boolean notEmpty(String s) {
         return s != null && !s.isEmpty();
     }
@@ -76,6 +95,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
         setContentView(R.layout.activity_main);
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         remoteVideoView = findViewById(R.id.remote_video_surface);
         remoteVideoView.setVisibility(View.GONE);
@@ -85,6 +105,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
         switchLight = findViewById(R.id.switchLight);
         toggleContainer = findViewById(R.id.toggleContainer);
         switchBell = findViewById(R.id.switchBell);
+        sipStatusDot = findViewById(R.id.sipStatusDot);
+        setSipStatus(CONN_NONE);
 
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
@@ -229,7 +251,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             return;
         }
 
-        if(user == null || user.isEmpty()) {
+        if(!notEmpty(user)) {
             Log.e(TAG, "invalid user for call");
             return;
         }
@@ -324,19 +346,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 Log.v(TAG, message);
                 switch(state) {
                     case Progress:
-                        Log.v(TAG, "linphone registration: progress");
+                        setSipStatus(CONN_PROGRESS);
                         break;
                     case Ok:
-                        Log.v(TAG, "linphone registration: ok");
-                        break;
-                    case None:
-                        Log.v(TAG, "linphone registration: none");
+                        setSipStatus(CONN_OK);
                         break;
                     default:
-                        Log.v(TAG, "linphone registration state:" + state);
+                        setSipStatus(CONN_NONE);
                         break;
                 }
-
             });
         }
 
