@@ -278,8 +278,8 @@ int main(int argc, char *argv[]) {
     linphone_core_set_nortp_timeout(lc, 600);
 
     linphone_core_enable_adaptive_rate_control(lc, false);
-    linphone_core_set_download_bandwidth(lc, 800);
-    linphone_core_set_upload_bandwidth(lc, 800);
+    linphone_core_set_download_bandwidth(lc, 300);
+    linphone_core_set_upload_bandwidth(lc, 300);
 
     sip_register(lc, username, password, domain);
 
