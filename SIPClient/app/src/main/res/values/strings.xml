@@ -11,7 +11,10 @@
     <string name="linphone_init_error">"Błąd inicjalizacji Linphone: "</string>
     <string name="linphone_connection_error">"Błąd połączenia: "</string>
     <string name="linphone_connection_end">Rozłączono: "</string>
-    <string name="mqtt_login">Podaj dane MQTT"</string>
+    <string name="mqtt_sip_login">Podaj dane MQTT i SIP"</string>
+    <string name="sip_domain">Podaj domenę SIP (ip:port)"</string>
+    <string name="sip_user">Podaj użytkownika SIP"</string>
+    <string name="sip_pass">Podaj hasło SIP"</string>
     <string name="mqttt_connection_end">Rozłączono z MQTT</string>
     <string name="user">"Użytkownik"</string>
     <string name="pass">"Hasło"</string>

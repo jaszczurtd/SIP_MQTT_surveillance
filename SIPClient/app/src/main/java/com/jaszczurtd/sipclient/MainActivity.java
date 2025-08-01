@@ -14,7 +14,6 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.telephony.ims.RegistrationManager;
 import android.text.InputType;
 import android.util.Log;
 import android.view.TextureView;
@@ -41,6 +40,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     MQTTClient mqttClient;
     NetworkMonitor networkMonitor;
     SharedPreferences prefs;
+    private String sipUser, sipDomain, sipPassword;
 
     private static final String[] PERMISSIONS = {
             Manifest.permission.RECORD_AUDIO,
@@ -48,15 +48,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             Manifest.permission.INTERNET
     };
     private static final int PERMISSION_REQUEST_CODE = 1;
-
-    public static String extractIp(String sipUri) {
-        if (sipUri == null) return null;
-
-        int atIndex = sipUri.indexOf('@');
-        if (atIndex == -1 || atIndex + 1 >= sipUri.length()) return null;
-
-        return sipUri.substring(atIndex + 1);
-    }
 
     private void handleNoNetwork(Runnable onExitConfirmed) {
         callHomeButton.setVisibility(View.GONE);
@@ -72,6 +63,10 @@ public class MainActivity extends AppCompatActivity implements Constants {
                     new Handler(Looper.getMainLooper()).postDelayed(onExitConfirmed, 100);
                 })
                 .show();
+    }
+
+    boolean notEmpty(String s) {
+        return s != null && !s.isEmpty();
     }
 
     @SuppressLint("SourceLockedOrientationActivity")
@@ -110,8 +105,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         if (!checkPermissions()) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
-        } else {
-            initLinphone();
         }
 
         callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
@@ -122,10 +115,25 @@ public class MainActivity extends AppCompatActivity implements Constants {
         String user = prefs.getString(MQTT_USER, null);
         String pass = prefs.getString(MQTT_PASS, null);
         String ipbroker = prefs.getString(MQTT_BROKER_IP, null);
-        if (user != null && pass != null && ipbroker != null) {
-            setupMQTT(user, pass, ipbroker);
+        sipUser = prefs.getString(SIP_USER, null);
+        sipDomain = prefs.getString(SIP_DOMAIN, null);
+        sipPassword = prefs.getString(SIP_PASS, null);
+
+        Log.v(TAG, "MQTT credentials: user:" + user + " pass:" + pass + " domain:" + ipbroker);
+        Log.v(TAG, "SIP credentials: user:" + sipUser + " pass:" + sipPassword + " domain:" + sipDomain);
+
+        if (notEmpty(user) && notEmpty(pass) && notEmpty(ipbroker) &&
+                notEmpty(sipUser) && notEmpty(sipDomain) && notEmpty(sipPassword)) {
+            new Thread(() -> {
+                runOnUiThread(this::initLinphone);
+            }).start();
+            new Thread(() -> {
+                runOnUiThread(() -> {
+                    setupMQTT(user, pass, ipbroker);
+                });
+            }).start();
         } else {
-            askForCredentials();
+            askForSIPandMQTTCredentials();
         }
     }
 
@@ -160,8 +168,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             Config c = Factory.instance().createConfig(null);
             c.setInt("sip", "inc_timeout", 600);
             c.setInt("sip", "keepalive_period", 30000);
-            c.setInt("net", "force_ice_disablement", 0);
-            c.setInt("net", "adaptive_rate_control", 1);  // Włącz adaptację
 
             linphoneCore = Factory.instance().createCoreWithConfig(c, this);
 
@@ -172,7 +178,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
             linphoneCore.setNortpTimeout(600);
             linphoneCore.setUploadBandwidth(0);
             linphoneCore.setDownloadBandwidth(0);
-
+            linphoneCore.setForcedIceRelayEnabled(false);
+            linphoneCore.setAdaptiveRateControlEnabled(true);
+            linphoneCore.setKeepAliveEnabled(true);
 
             for (PayloadType pt : linphoneCore.getVideoPayloadTypes()) {
                 if ("H264".equals(pt.getMimeType())) {
@@ -183,27 +191,29 @@ public class MainActivity extends AppCompatActivity implements Constants {
             linphoneCore.setNativeVideoWindowId(remoteVideoView);
             linphoneCore.addListener(new LinphoneListener());
 
-            String username = "android-marcin";
-            String password = "-";
-            String domain = "-";
-
-            AuthInfo user = Factory.instance().createAuthInfo(username, null, password, null, null, domain, null);
+            AuthInfo user = Factory.instance().createAuthInfo(sipUser, null, sipPassword, null, null, sipDomain, null);
             AccountParams accountParams = linphoneCore.createAccountParams();
-            String sipAddress = "sip:" + username + "@" + domain;
+            String sipAddress = "sip:" + sipUser + "@" + sipDomain;
             Address identity = Factory.instance().createAddress(sipAddress);
-            Log.v(TAG, "login for address " + sipAddress);
-            accountParams.setIdentityAddress(identity);
-            Address address = Factory.instance().createAddress("sip:" + domain);
-            if(address != null) {
-                address.setTransport(TransportType.Tcp);
-                accountParams.setServerAddress(address);
-                accountParams.setRegisterEnabled(true);
+            if(identity != null) {
+                Log.v(TAG, "login for address " + sipAddress);
+                accountParams.setIdentityAddress(identity);
+                Address address = Factory.instance().createAddress("sip:" + sipDomain);
+                if(address != null) {
+                    address.setTransport(TransportType.Udp);
+                    accountParams.setServerAddress(address);
+                    accountParams.setRegisterEnabled(true);
+                }
+                Account account = linphoneCore.createAccount(accountParams);
+                linphoneCore.addAuthInfo(user);
+                linphoneCore.addAccount(account);
+                linphoneCore.setDefaultAccount(account);
+                linphoneCore.setForcedIceRelayEnabled(true);
+
+            } else {
+                Log.e(TAG, "cannot set identity for linphone:" + sipAddress);
             }
-            Account account = linphoneCore.createAccount(accountParams);
-            linphoneCore.addAuthInfo(user);
-            linphoneCore.addAccount(account);
-            linphoneCore.setDefaultAccount(account);
-            linphoneCore.setUserAgent(username, TAG);
+            linphoneCore.setUserAgent(TAG, "1.0");
 
             linphoneCore.start();
 
@@ -219,13 +229,18 @@ public class MainActivity extends AppCompatActivity implements Constants {
             return;
         }
 
+        if(user == null || user.isEmpty()) {
+            Log.e(TAG, "invalid user for call");
+            return;
+        }
+
         try {
             CallParams params = linphoneCore.createCallParams(null);
             Objects.requireNonNull(params).setCameraEnabled(true);
             params.setAudioEnabled(true);
             params.setVideoEnabled(true);
 
-            params.setAvpfEnabled(true);
+            params.setAvpfEnabled(false);
 
             AudioDevice[] AudioDevices = linphoneCore.getExtendedAudioDevices();
             for(AudioDevice audioDevice : AudioDevices) {
@@ -238,7 +253,11 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 }
             }
 
-            Address address = Factory.instance().createAddress(user);
+            Address address = Factory.instance().createAddress("sip:" + user + "@" + sipDomain);
+            if(address == null) {
+                Toast.makeText(this, getString(R.string.linphone_connection_error) + "Invalid user", Toast.LENGTH_SHORT).show();
+                return;
+            }
             linphoneCore.inviteAddressWithParams(Objects.requireNonNull(address), params);
 
             callGarageButton.setVisibility(View.GONE);
@@ -302,7 +321,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
         @Override
         public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
             runOnUiThread(() -> {
-                Log.v(TAG, "proxy:" + proxyConfig.getDomain() + " " + proxyConfig.getContactParameters());
                 Log.v(TAG, message);
                 switch(state) {
                     case Progress:
@@ -376,7 +394,12 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 @Override
                 public void onConnected() {
                     runOnUiThread(() -> {
-                        manageMQTTSwitchesVisibility(linphoneCore.getCurrentCall(), true);
+                        Call c = null;
+                        if(linphoneCore != null) {
+                            c = linphoneCore.getCurrentCall();
+                        }
+
+                        manageMQTTSwitchesVisibility(c, true);
                         mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
                         mqttClient.subscribeTo(MQTT_BELL_TOPIC);
                     });
@@ -426,9 +449,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
     }
 
-    void askForCredentials() {
+    void askForSIPandMQTTCredentials() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(getString(R.string.mqtt_login));
+        builder.setTitle(getString(R.string.mqtt_sip_login));
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -446,19 +469,46 @@ public class MainActivity extends AppCompatActivity implements Constants {
         inputPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         layout.addView(inputPass);
 
+        final EditText inputSIPDomain = new EditText(this);
+        inputSIPDomain.setHint(getString(R.string.sip_domain));
+        layout.addView(inputSIPDomain);
+
+        final EditText inputSIPUser = new EditText(this);
+        inputSIPUser.setHint(getString(R.string.sip_user));
+        layout.addView(inputSIPUser);
+
+        final EditText inputSIPPass = new EditText(this);
+        inputSIPPass.setHint(getString(R.string.sip_pass));
+        inputSIPPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(inputSIPPass);
+
         builder.setView(layout);
 
         builder.setPositiveButton(getString(R.string.ok), (dialog, which) -> {
             String user = inputUser.getText().toString();
             String pass = inputPass.getText().toString();
             String broker = ipbroker.getText().toString();
+            sipUser = inputSIPUser.getText().toString();
+            sipDomain = inputSIPDomain.getText().toString();
+            sipPassword = inputSIPPass.getText().toString();
             prefs.edit()
                     .putString(MQTT_USER, user)
                     .putString(MQTT_PASS, pass)
                     .putString(MQTT_BROKER_IP, broker)
+                    .putString(SIP_USER, sipUser)
+                    .putString(SIP_PASS, sipPassword)
+                    .putString(SIP_DOMAIN, sipDomain)
                     .apply();
 
-            setupMQTT(user, pass, broker);
+            new Thread(() -> {
+                runOnUiThread(this::initLinphone);
+            }).start();
+            new Thread(() -> {
+                runOnUiThread(() -> {
+                    setupMQTT(user, pass, broker);
+                });
+            }).start();
+
         });
 
         builder.setCancelable(false);
@@ -468,8 +518,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
     void manageMQTTSwitchesVisibility(Call call, boolean state) {
         try {
             if(call != null) {
-                Log.v(TAG, "remote address:" + call.getRemoteAddress().getDomain());
-                if(Objects.requireNonNull(call.getRemoteAddress().getDomain()).equalsIgnoreCase(extractIp(GARAGE_USER))) {
+                Log.v(TAG, "remote address:" + call.getRemoteAddress().getUsername());
+                if(Objects.requireNonNull(call.getRemoteAddress().getUsername()).equalsIgnoreCase(GARAGE_USER)) {
                     if(state) {
                         setLightTo(true);
                         toggleContainer.setVisibility(View.VISIBLE);
@@ -478,6 +528,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         toggleContainer.setVisibility(View.GONE);
                     }
                 }
+            } else {
+                setLightTo(false);
+                toggleContainer.setVisibility(View.GONE);
             }
         } catch (Exception e) {
             Log.e(TAG, "stwitches visibility problem: " + e);

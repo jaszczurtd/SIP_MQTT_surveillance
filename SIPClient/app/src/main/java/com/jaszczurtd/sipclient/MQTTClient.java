@@ -102,7 +102,13 @@ public class MQTTClient implements Constants {
 
                 @Override
                 public void deliveryComplete(IMqttDeliveryToken token) {
-                    Log.v(TAG, "MQTT message has been delivered");
+                    String message = "none/error";
+                    try {
+                        message = token.getResponse().toString();
+                    } catch (Exception e) {
+                        Log.e(TAG, "error getting message from token:" + e.getMessage());
+                    }
+                    Log.v(TAG, "MQTT message has been delivered: " + message);
                     if(dc != null) {
                         dc.onMessageDelivered();
                         dc = null;
