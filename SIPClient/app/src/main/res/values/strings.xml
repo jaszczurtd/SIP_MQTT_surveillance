@@ -24,6 +24,8 @@
     <string name="show_home">"Pokaż dom"</string>
     <string name="lights">"Światło"</string>
     <string name="bell">"Dzwonek"</string>
-    <string name="sip_connection">"SIP connection"</string>
+    <string name="sip_connection">"SIP"</string>
+    <string name="mqtt_connection">"MQTT"</string>
+    <string name="settings">Settings</string>
 
 </resources>

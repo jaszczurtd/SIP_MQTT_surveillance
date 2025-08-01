@@ -16,7 +16,7 @@ public interface Constants {
     String MQTT_ON = "on";
     String MQTT_OFF = "off";
 
-    enum SIPConnection {
+    enum Connection {
         CONN_NONE, CONN_PROGRESS, CONN_OK
     }
 }

@@ -1,6 +1,6 @@
 package com.jaszczurtd.sipclient;
 
-import static com.jaszczurtd.sipclient.Constants.SIPConnection.*;
+import static com.jaszczurtd.sipclient.Constants.Connection.*;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -24,6 +24,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -43,7 +44,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     MQTTClient mqttClient;
     NetworkMonitor networkMonitor;
     SharedPreferences prefs;
-    View sipStatusDot;
+    View sipStatusDot, mqttStatusDot;
     private String sipUser, sipDomain, sipPassword;
 
     private static final String[] PERMISSIONS = {
@@ -69,7 +70,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 .show();
     }
 
-    public void setSipStatus(SIPConnection status) {
+    public void setSipStatus(Connection status) {
         switch (status) {
             case CONN_NONE:
                 sipStatusDot.setBackgroundResource(R.drawable.circle_red);
@@ -84,6 +85,20 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
     }
 
+    public void setMQTTStatus(Connection status) {
+        switch (status) {
+            case CONN_NONE:
+                mqttStatusDot.setBackgroundResource(R.drawable.circle_red);
+                break;
+            case CONN_PROGRESS:
+                mqttStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                break;
+            case CONN_OK:
+            default:
+                mqttStatusDot.setBackgroundResource(R.drawable.circle_green);
+                break;
+        }
+    }
     boolean notEmpty(String s) {
         return s != null && !s.isEmpty();
     }
@@ -106,7 +121,14 @@ public class MainActivity extends AppCompatActivity implements Constants {
         toggleContainer = findViewById(R.id.toggleContainer);
         switchBell = findViewById(R.id.switchBell);
         sipStatusDot = findViewById(R.id.sipStatusDot);
+        mqttStatusDot = findViewById(R.id.mqttStatusDot);
         setSipStatus(CONN_NONE);
+        setMQTTStatus(CONN_NONE);
+
+        ImageButton settingsButton = findViewById(R.id.settingsButton);
+        settingsButton.setOnClickListener(v -> {
+            askForSIPandMQTTCredentials(true);
+        });
 
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
@@ -128,10 +150,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
         if (!checkPermissions()) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
         }
-
-        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
-        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
-        hangupButton.setOnClickListener(v -> hangUp());
 
         prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
         String user = prefs.getString(MQTT_USER, null);
@@ -155,8 +173,25 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 });
             }).start();
         } else {
-            askForSIPandMQTTCredentials();
+            askForSIPandMQTTCredentials(false);
         }
+
+        //linphone actions
+        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
+        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
+        hangupButton.setOnClickListener(v -> hangUp());
+
+        //mqtt actions
+        lightListener = (btn, isChecked) -> {
+            setLightTo(isChecked);
+        };
+        switchLight.setOnCheckedChangeListener(lightListener);
+
+        bellListener = (btn, isChecked) -> {
+            setBellTo(isChecked);
+        };
+        switchBell.setOnCheckedChangeListener(bellListener);
+        toggleContainer.setVisibility(View.GONE);
     }
 
     private boolean checkPermissions() {
@@ -186,6 +221,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void initLinphone() {
         try {
+            destroyLinphone();
 
             Config c = Factory.instance().createConfig(null);
             c.setInt("sip", "inc_timeout", 600);
@@ -316,10 +352,10 @@ public class MainActivity extends AppCompatActivity implements Constants {
         toggleContainer.setVisibility(View.GONE);
     }
 
-    @Override
-    public void onDestroy() {
+    void destroyLinphone() {
         try {
             if (linphoneCore != null) {
+                linphoneCore.terminateAllCalls();
                 linphoneLogout();
                 linphoneCore.stop();
                 linphoneCore = null;
@@ -327,7 +363,12 @@ public class MainActivity extends AppCompatActivity implements Constants {
         } catch (Exception e) {
             Log.e(TAG, "linphone error:" + e);
         }
+    }
 
+    @Override
+    public void onDestroy() {
+
+        destroyLinphone();
         destroyMQTT();
 
         try {
@@ -389,18 +430,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             return;
         }
 
-        lightListener = (btn, isChecked) -> {
-            setLightTo(isChecked);
-        };
-        switchLight.setOnCheckedChangeListener(lightListener);
-
-        bellListener = (btn, isChecked) -> {
-            setBellTo(isChecked);
-        };
-        switchBell.setOnCheckedChangeListener(bellListener);
-
-        toggleContainer.setVisibility(View.GONE);
-
         mqttClient = new MQTTClient(
             this,
             ipbroker,
@@ -412,6 +441,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 @Override
                 public void onConnected() {
                     runOnUiThread(() -> {
+                        setMQTTStatus(CONN_OK);
                         Call c = null;
                         if(linphoneCore != null) {
                             c = linphoneCore.getCurrentCall();
@@ -424,9 +454,17 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 }
 
                 @Override
+                public void onProgress() {
+                    runOnUiThread(() -> {
+                        setMQTTStatus(CONN_PROGRESS);
+                    });
+                }
+
+                @Override
                 public void onDisconnected() {
                     runOnUiThread(() -> {
                         toggleContainer.setVisibility(View.GONE);
+                        setMQTTStatus(CONN_NONE);
                     });
                 }
 
@@ -434,6 +472,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 public void onConnectionFailed(String reason) {
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
+                        setMQTTStatus(CONN_NONE);
                     });
                 }
             });
@@ -467,7 +506,14 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
     }
 
-    void askForSIPandMQTTCredentials() {
+    void autoFillWidget(EditText t, String identifier) {
+        if(t != null && identifier != null) {
+            String s = prefs.getString(identifier, null);
+            t.setText(notEmpty(s) ? s : "");
+        }
+    }
+
+    void askForSIPandMQTTCredentials(boolean autofill) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle(getString(R.string.mqtt_sip_login));
 
@@ -499,6 +545,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
         inputSIPPass.setHint(getString(R.string.sip_pass));
         inputSIPPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         layout.addView(inputSIPPass);
+
+        if(autofill) {
+            autoFillWidget(inputUser, MQTT_USER);
+            autoFillWidget(inputPass, MQTT_PASS);
+            autoFillWidget(ipbroker, MQTT_BROKER_IP);
+            autoFillWidget(inputSIPUser, SIP_USER);
+            autoFillWidget(inputSIPDomain, SIP_DOMAIN);
+            autoFillWidget(inputSIPPass, SIP_PASS);
+        }
 
         builder.setView(layout);
 
