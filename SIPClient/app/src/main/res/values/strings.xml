@@ -27,5 +27,6 @@
     <string name="sip_connection">"SIP"</string>
     <string name="mqtt_connection">"MQTT"</string>
     <string name="settings">Settings</string>
+    <string name="sip_not_connected">Brak połączenia z Raspberry w domu - restart Wireguarda?</string>
 
 </resources>

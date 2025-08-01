@@ -46,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     SharedPreferences prefs;
     View sipStatusDot, mqttStatusDot;
     private String sipUser, sipDomain, sipPassword;
+    private RegistrationState linphoneConnected;
 
     private static final String[] PERMISSIONS = {
             Manifest.permission.RECORD_AUDIO,
@@ -54,7 +55,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     };
     private static final int PERMISSION_REQUEST_CODE = 1;
 
-    private void handleNoNetwork(Runnable onExitConfirmed) {
+    private void handleNoNetwork() {
         callHomeButton.setVisibility(View.GONE);
         callGarageButton.setVisibility(View.GONE);
         hangupButton.setVisibility(View.GONE);
@@ -63,9 +64,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
         alert = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.error))
                 .setMessage(getString(R.string.no_internet_error))
-                .setPositiveButton(getString(R.string.exit), (dialog, which) -> {
+                .setPositiveButton(getString(R.string.ok), (dialog, which) -> {
                     alert.dismiss();
-                    new Handler(Looper.getMainLooper()).postDelayed(onExitConfirmed, 100);
                 })
                 .show();
     }
@@ -148,7 +148,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(this::finish);
+            handleNoNetwork();
         }
 
         if (!checkPermissions()) {
@@ -287,7 +287,18 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void makeCall(String user) {
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(this::finish);
+            handleNoNetwork();
+            return;
+        }
+
+        if (linphoneConnected != RegistrationState.Ok) {
+            alert = new AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.error))
+                    .setMessage(getString(R.string.sip_not_connected))
+                    .setPositiveButton(getString(R.string.ok), (dialog, which) -> {
+                        alert.dismiss();
+                    })
+                    .show();
             return;
         }
 
@@ -388,7 +399,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
         @Override
         public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
             Log.v(TAG, message);
-            switch(state) {
+            linphoneConnected = state;
+            switch(linphoneConnected) {
                 case Progress:
                     setSipStatus(CONN_PROGRESS);
                     break;
@@ -457,7 +469,9 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
                 @Override
                 public void onProgress() {
-                    setMQTTStatus(CONN_PROGRESS);
+                    if(mqttClient != null && !mqttClient.isConnected()) {
+                        setMQTTStatus(CONN_PROGRESS);
+                    }
                 }
 
                 @Override
