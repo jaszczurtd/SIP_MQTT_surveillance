@@ -460,10 +460,11 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         if(linphoneCore != null) {
                             c = linphoneCore.getCurrentCall();
                         }
-
                         manageMQTTSwitchesVisibility(c, true);
-                        mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
-                        mqttClient.subscribeTo(MQTT_BELL_TOPIC);
+                        if(mqttClient != null) {
+                            mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
+                            mqttClient.subscribeTo(MQTT_BELL_TOPIC);
+                        }
                     });
                 }
 
