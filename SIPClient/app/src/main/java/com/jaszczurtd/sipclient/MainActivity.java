@@ -5,6 +5,7 @@ import static com.jaszczurtd.sipclient.Constants.Connection.*;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.Manifest;
@@ -14,11 +15,8 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
-import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -34,17 +32,18 @@ import org.linphone.core.*;
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity implements Constants {
-    AlertDialog alert;
-    Core linphoneCore;
-    TextureView remoteVideoView;
-    Button callHomeButton, callGarageButton, hangupButton;
-    SwitchCompat switchLight, switchBell;
-    CompoundButton.OnCheckedChangeListener lightListener, bellListener;
-    LinearLayout toggleContainer;
-    MQTTClient mqttClient;
-    NetworkMonitor networkMonitor;
-    SharedPreferences prefs;
-    View sipStatusDot, mqttStatusDot;
+    private AlertDialog alert;
+    private Core linphoneCore;
+    private ZoomableVideoTextureView remoteVideoView;
+    private ConstraintLayout videoContainer;
+    private Button callHomeButton, callGarageButton, hangupButton;
+    private SwitchCompat switchLight, switchBell;
+    private CompoundButton.OnCheckedChangeListener lightListener, bellListener;
+    private LinearLayout toggleContainer;
+    private MQTTClient mqttClient;
+    private NetworkMonitor networkMonitor;
+    private SharedPreferences prefs;
+    private View sipStatusDot, mqttStatusDot;
     private String sipUser, sipDomain, sipPassword;
     private RegistrationState linphoneConnected;
 
@@ -116,8 +115,13 @@ public class MainActivity extends AppCompatActivity implements Constants {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        videoContainer = findViewById(R.id.videoContainer);
         remoteVideoView = findViewById(R.id.remote_video_surface);
-        remoteVideoView.setVisibility(View.GONE);
+        findViewById(R.id.btnReset).setOnClickListener(v -> {
+            remoteVideoView.resetToFitCenter(true);
+        });
+        videoContainer.setVisibility(View.GONE);
+
         callHomeButton = findViewById(R.id.callHomeButton);
         callGarageButton = findViewById(R.id.callGarageButton);
         hangupButton = findViewById(R.id.hangupButton);
@@ -418,7 +422,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             runOnUiThread(() -> {
                 switch (state) {
                     case Connected:
-                        remoteVideoView.setVisibility(View.VISIBLE);
+                        videoContainer.setVisibility(View.VISIBLE);
                         manageMQTTSwitchesVisibility(call, true);
                         break;
                     case End:
@@ -429,7 +433,8 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         callHomeButton.setVisibility(View.VISIBLE);
                         callGarageButton.setVisibility(View.VISIBLE);
                         hangupButton.setVisibility(View.GONE);
-                        remoteVideoView.setVisibility(View.GONE);
+                        remoteVideoView.resetToFitCenter(false);
+                        videoContainer.setVisibility(View.GONE);
 
                         manageMQTTSwitchesVisibility(call, false);
                         break;
