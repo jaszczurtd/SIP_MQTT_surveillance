@@ -36,7 +36,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     private Core linphoneCore;
     private ZoomableVideoTextureView remoteVideoView;
     private ConstraintLayout videoContainer;
-    private Button callHomeButton, callGarageButton, hangupButton;
+    private Button callHomeButton, callGarageButton, callKitchenButton, hangupButton;
     private SwitchCompat switchLight, switchBell;
     private CompoundButton.OnCheckedChangeListener lightListener, bellListener;
     private LinearLayout toggleContainer;
@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     private void handleNoNetwork() {
         callHomeButton.setVisibility(View.GONE);
         callGarageButton.setVisibility(View.GONE);
+        callKitchenButton.setVisibility(View.GONE);
         hangupButton.setVisibility(View.GONE);
         toggleContainer.setVisibility(View.GONE);
 
@@ -124,6 +125,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         callHomeButton = findViewById(R.id.callHomeButton);
         callGarageButton = findViewById(R.id.callGarageButton);
+        callKitchenButton = findViewById(R.id.callKitchenButton);
         hangupButton = findViewById(R.id.hangupButton);
         switchLight = findViewById(R.id.switchLight);
         toggleContainer = findViewById(R.id.toggleContainer);
@@ -187,6 +189,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
         //linphone actions
         callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
         callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
+        callKitchenButton.setOnClickListener(v -> makeCall(KITCHEN_USER));
         hangupButton.setOnClickListener(v -> hangUp());
 
         //mqtt actions
@@ -339,6 +342,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
             callGarageButton.setVisibility(View.GONE);
             callHomeButton.setVisibility(View.GONE);
+            callKitchenButton.setVisibility(View.GONE);
 
             hangupButton.setVisibility(View.VISIBLE);
 
@@ -366,6 +370,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
         callHomeButton.setVisibility(View.VISIBLE);
         callGarageButton.setVisibility(View.VISIBLE);
+        callKitchenButton.setVisibility(View.VISIBLE);
         hangupButton.setVisibility(View.GONE);
 
         toggleContainer.setVisibility(View.GONE);
@@ -432,6 +437,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         }
                         callHomeButton.setVisibility(View.VISIBLE);
                         callGarageButton.setVisibility(View.VISIBLE);
+                        callKitchenButton.setVisibility(View.VISIBLE);
                         hangupButton.setVisibility(View.GONE);
                         remoteVideoView.resetToFitCenter(false);
                         videoContainer.setVisibility(View.GONE);

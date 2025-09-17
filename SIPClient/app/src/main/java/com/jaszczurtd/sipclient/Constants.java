@@ -4,6 +4,7 @@ public interface Constants {
     String TAG = "SIPClientDebug";
     String HOME_USER = "pi5";
     String GARAGE_USER = "pi3";
+    String KITCHEN_USER = "pi5-kuchnia";
     String MQTT_CREDENTIALS = "mqtt_prefs";
     String MQTT_USER = "mqtt_user";
     String MQTT_PASS = "mqtt_pass";
