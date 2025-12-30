@@ -1,6 +1,6 @@
 # SIPClient – Android App for Video Intercom & MQTT-based Home Control
 
-**SIPClient** is an Android application that enables video communication with home intercom-like devices based on Raspberry pi 3&5 over SIP (Linphone) and allows remote control of GPIO (light, bell) on Raspberry Pi 3 using MQTT. It's designed to work in a local or VPN-based network (e.g. WireGuard).
+**SIPClient** is an Android application that enables video communication with home intercom-like devices based on Raspberry pi 3&5 over SIP (Linphone) and allows remote control of GPIO (light, bell) on Raspberry Pi 5 using MQTT. It's designed to work in a local or VPN-based network (e.g. WireGuard).
 
 ---
 
@@ -30,7 +30,7 @@
                 | SIP over VPN
                 v
     +---------------------+
-    |  Raspberry Pi 3     |
+    |  Raspberry Pi 5     |
     |---------------------|
     | MQTT subscriber     |
     | linphone-daemon     |
