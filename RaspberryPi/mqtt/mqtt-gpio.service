@@ -5,8 +5,8 @@ Requires=network-online.target wg-quick@wg0.service
 
 
 [Service]
-ExecStart=/home/pi/Documents/lights-timer/RaspberryPi/gpio/gpio_user
-WorkingDirectory=/home/pi/Documents/lights-timer/RaspberryPi/gpio/
+ExecStart=/home/pi/Documents/SIP_MQTT_surveillance/RaspberryPi/mqtt/mqtt_gpio
+WorkingDirectory=/home/pi/Documents/SIP_MQTT_surveillance/RaspberryPi/mqtt/
 Restart=always
 RestartSec=5
 User=pi

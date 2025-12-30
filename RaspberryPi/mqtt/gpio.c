@@ -14,14 +14,8 @@
 #include <time.h>
 #include <stdint.h>
 #include <strings.h>
+#include <gpiod.h>
 
-#define GPIO_OFFSET 0x00200000
-#define BLOCK_SIZE 4096
-
-#define INP_GPIO(g)   *(gpio + ((g)/10)) &= ~(7 << (((g)%10)*3))
-#define OUT_GPIO(g)   *(gpio + ((g)/10)) |=  (1 << (((g)%10)*3))
-#define GPIO_SET      *(gpio + 7)
-#define GPIO_CLR      *(gpio + 10)
 
 #define MAX_LEN 128
 #define AUTH_PATH ".mqtt_auth"
@@ -83,21 +77,71 @@ int read_or_prompt_credentials(char *username, char *password) {
     return 0;
 }
 
+static struct gpiod_chip *chip = NULL;
+static struct gpiod_line_request *req = NULL;
 
-volatile unsigned *gpio = NULL;
-void setup_gpio_mem() {
-    int mem_fd = open("/dev/gpiomem", O_RDWR | O_SYNC);
-    void *gpio_map = mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, GPIO_OFFSET);
-    close(mem_fd);
-    gpio = (volatile unsigned *)gpio_map;
+static const unsigned int offsets[] = { 17, 27 };
+
+void setup_gpio_mem(void)
+{
+    chip = gpiod_chip_open("/dev/gpiochip0");
+    if (!chip) {
+        perror("gpiod_chip_open(/dev/gpiochip0)");
+        exit(1);
+    }
+
+    struct gpiod_line_settings *settings = gpiod_line_settings_new();
+    struct gpiod_line_config   *lcfg     = gpiod_line_config_new();
+    struct gpiod_request_config *rcfg    = gpiod_request_config_new();
+
+    if (!settings || !lcfg || !rcfg) {
+        fprintf(stderr, "gpiod: alloc failed\n");
+        exit(1);
+    }
+
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
+
+    if (gpiod_line_config_add_line_settings(lcfg, offsets, 2, settings) < 0) {
+        perror("gpiod_line_config_add_line_settings");
+        exit(1);
+    }
+
+    gpiod_request_config_set_consumer(rcfg, "mqtt_gpio");
+
+    req = gpiod_chip_request_lines(chip, rcfg, lcfg);
+    if (!req) {
+        perror("gpiod_chip_request_lines");
+        exit(1);
+    }
+
+    gpiod_line_settings_free(settings);
+    gpiod_line_config_free(lcfg);
+    gpiod_request_config_free(rcfg);
 }
 
-void set_gpio(int pin, int value) {
-    INP_GPIO(pin); OUT_GPIO(pin);
-    if (value)
-        GPIO_SET = (1 << pin);
-    else
-        GPIO_CLR = (1 << pin);
+void set_gpio(int pin, int value)
+{
+    if (!req) return;
+
+    enum gpiod_line_value v = value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE;
+
+    // 'pin' is the line offset within the chip (works for typical Raspberry Pi mapping).
+    if (gpiod_line_request_set_value(req, (unsigned int)pin, v) < 0) {
+        perror("gpiod_line_request_set_value");
+    }
+}
+
+void cleanup_gpio(void)
+{
+    if (req) {
+        gpiod_line_request_release(req);
+        req = NULL;
+    }
+    if (chip) {
+        gpiod_chip_close(chip);
+        chip = NULL;
+    }
 }
 
 void on_disconnect(struct mosquitto *mosq, void *userdata, int rc) {
@@ -121,40 +165,46 @@ void on_connect(struct mosquitto *mosq, void *userdata, int rc) {
 unsigned long lightsStartTime = 0;
 unsigned long bellStartTime = 0;
 
-void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg) {
+static void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg)
+{
+    (void)mosq;
+    (void)userdata;
 
-    printf("received payload: %s for topic:%s\n", (char*)msg->payload, msg->topic);
+    char payload[32];
+    int n = msg->payloadlen;
+    if (n < 0) n = 0;
+    if (n > (int)sizeof(payload) - 1) n = (int)sizeof(payload) - 1;
+
+    memcpy(payload, msg->payload, (size_t)n);
+    payload[n] = '\0';
+
+    printf("received payload: %s for topic:%s\n", payload, msg->topic);
 
     int pin = 0;
     if (strcmp(msg->topic, "gpio/17") == 0) pin = 17;
-    if (strcmp(msg->topic, "gpio/27") == 0) pin = 27;
+    else if (strcmp(msg->topic, "gpio/27") == 0) pin = 27;
 
-    unsigned long now = millis();
+    unsigned long now = (unsigned long)millis();
 
     if (pin) {
-        if (strcasecmp(msg->payload, "on") == 0) {
-            if(pin == 17) {
+        if (strcasecmp(payload, "on") == 0) {
+            if (pin == 17) {
                 lightsStartTime = now + (SWITCHES_TIMEOUT * 1000);
                 printf("set timeout for lights\n");
-            }
-            if(pin == 27) {
+            } else if (pin == 27) {
                 bellStartTime = now + (SWITCHES_TIMEOUT * 1000);
                 printf("set timeout for bell\n");
             }
-
             set_gpio(pin, 1);
-        } else if (strcasecmp(msg->payload, "off") == 0) {
-            if(pin == 17) {
-                lightsStartTime = 0;
-            }
-            if(pin == 27) {
-                bellStartTime = 0;
-            }
+        } else if (strcasecmp(payload, "off") == 0) {
+            if (pin == 17) lightsStartTime = 0;
+            else if (pin == 27) bellStartTime = 0;
 
             set_gpio(pin, 0);
         }
     }
 }
+
 
 volatile bool keep_running = false;
 void handle_sigint(int sig) {
@@ -220,6 +270,7 @@ int main() {
         sleep(1);
     }
 
+    cleanup_gpio();
     mosquitto_destroy(mosq);
     mosquitto_lib_cleanup();
 

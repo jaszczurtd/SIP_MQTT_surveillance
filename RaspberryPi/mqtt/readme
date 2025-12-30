@@ -6,4 +6,15 @@ sudo apt install libmosquitto-dev libmosquitto1 mosquitto-clients
 compile:
 gcc -o mqtt_gpio mqtt_gpio_client.c -lmosquitto
 
+ports:
+
+sudo iptables -A INPUT -p tcp --dport 1883 -j ACCEPT
+#sudo apt install -y iptables-persistent
+#sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+sudo netfilter-persistent save
+
+sudo systemctl daemon-reload
+sudo systemctl enable mqtt-gpio.service
+sudo systemctl start mqtt-gpio.service
+sudo systemctl status mqtt-gpio.service
 

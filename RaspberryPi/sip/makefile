@@ -13,7 +13,7 @@ OUTDIR   := build
 # nagłówki i wspólne biblioteki
 INC      := -I/usr/include -I/usr/include/linphone \
             -I/usr/include/mediastreamer2 -I/usr/include/ortp
-LIBS     := -llinphone -lmediastreamer -lbctoolbox -lortp -lpthread -ldl -lm
+LIBS     := -llinphone -lmediastreamer2 -lbctoolbox -lortp -lpthread -ldl -lm
 CFLAGS   := -Wall -O2
 #######################################################################
 

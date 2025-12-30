@@ -2,7 +2,7 @@
 
 CC = gcc
 CFLAGS = -Wall -O2
-LDFLAGS = -lmosquitto
+LDFLAGS = -lmosquitto -lgpiod
 TARGET = mqtt_gpio
 SRC = gpio.c
 

@@ -1,13 +1,14 @@
 [Unit]
 Description=SIP Receiver Service
-After=network.target
+After=network-online.target wg-quick@wg0.service
+Requires=network-online.target wg-quick@wg0.service
 
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/Documents/lights-timer/RaspberryPi/sip
+WorkingDirectory=/home/pi/Documents/SIP_MQTT_surveillance/RaspberryPi/sip/build
 Environment="LD_LIBRARY_PATH=/usr/lib/arm-linux-gnueabihf"
-ExecStart=/home/pi/Documents/lights-timer/RaspberryPi/sip/sip_receiver
+ExecStart=/home/pi/Documents/SIP_MQTT_surveillance/RaspberryPi/sip/build/sip_receiver_aarch64
 Restart=on-failure
 RestartSec=5
 StandardOutput=syslog
