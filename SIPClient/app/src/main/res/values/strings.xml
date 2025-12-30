@@ -20,10 +20,15 @@
     <string name="pass">"Hasło"</string>
     <string name="ipbroker">Adres IP brokera</string>
     <string name="disconnect">"Rozłącz"</string>
-    <string name="show_garage">"Pokaż garaż"</string>
-    <string name="show_home">"Pokaż dom"</string>
+    <string name="show_garage">"Garaż"</string>
+    <string name="show_home">"Salon"</string>
+    <string name="show_kitchen">"Kuchnia"</string>
     <string name="lights">"Światło"</string>
     <string name="bell">"Dzwonek"</string>
-    <string name="sip_connection">"SIP connection"</string>
+    <string name="sip_connection">"SIP"</string>
+    <string name="mqtt_connection">"MQTT"</string>
+    <string name="settings">Settings</string>
+    <string name="sip_not_connected">Brak połączenia z Raspberry w domu - restart Wireguarda?</string>
+    <string name="reset_view">powrót do poprzednich rozmiarów</string>
 
 </resources>

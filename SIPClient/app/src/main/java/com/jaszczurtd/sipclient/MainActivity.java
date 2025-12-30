@@ -1,10 +1,11 @@
 package com.jaszczurtd.sipclient;
 
-import static com.jaszczurtd.sipclient.Constants.SIPConnection.*;
+import static com.jaszczurtd.sipclient.Constants.Connection.*;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.Manifest;
@@ -14,16 +15,14 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
-import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -33,18 +32,20 @@ import org.linphone.core.*;
 import java.util.Objects;
 
 public class MainActivity extends AppCompatActivity implements Constants {
-    AlertDialog alert;
-    Core linphoneCore;
-    TextureView remoteVideoView;
-    Button callHomeButton, callGarageButton, hangupButton;
-    SwitchCompat switchLight, switchBell;
-    CompoundButton.OnCheckedChangeListener lightListener, bellListener;
-    LinearLayout toggleContainer;
-    MQTTClient mqttClient;
-    NetworkMonitor networkMonitor;
-    SharedPreferences prefs;
-    View sipStatusDot;
+    private AlertDialog alert;
+    private Core linphoneCore;
+    private ZoomableVideoTextureView remoteVideoView;
+    private ConstraintLayout videoContainer;
+    private Button callHomeButton, callGarageButton, callKitchenButton, hangupButton;
+    private SwitchCompat switchLight, switchBell;
+    private CompoundButton.OnCheckedChangeListener lightListener, bellListener;
+    private LinearLayout toggleContainer;
+    private MQTTClient mqttClient;
+    private NetworkMonitor networkMonitor;
+    private SharedPreferences prefs;
+    private View sipStatusDot, mqttStatusDot;
     private String sipUser, sipDomain, sipPassword;
+    private RegistrationState linphoneConnected;
 
     private static final String[] PERMISSIONS = {
             Manifest.permission.RECORD_AUDIO,
@@ -53,37 +54,55 @@ public class MainActivity extends AppCompatActivity implements Constants {
     };
     private static final int PERMISSION_REQUEST_CODE = 1;
 
-    private void handleNoNetwork(Runnable onExitConfirmed) {
+    private void handleNoNetwork() {
         callHomeButton.setVisibility(View.GONE);
         callGarageButton.setVisibility(View.GONE);
+        callKitchenButton.setVisibility(View.GONE);
         hangupButton.setVisibility(View.GONE);
         toggleContainer.setVisibility(View.GONE);
 
         alert = new AlertDialog.Builder(this)
                 .setTitle(getString(R.string.error))
                 .setMessage(getString(R.string.no_internet_error))
-                .setPositiveButton(getString(R.string.exit), (dialog, which) -> {
+                .setPositiveButton(getString(R.string.ok), (dialog, which) -> {
                     alert.dismiss();
-                    new Handler(Looper.getMainLooper()).postDelayed(onExitConfirmed, 100);
                 })
                 .show();
     }
 
-    public void setSipStatus(SIPConnection status) {
-        switch (status) {
-            case CONN_NONE:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_red);
-                break;
-            case CONN_PROGRESS:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_yellow);
-                break;
-            case CONN_OK:
-            default:
-                sipStatusDot.setBackgroundResource(R.drawable.circle_green);
-                break;
-        }
+    public void setSipStatus(Connection status) {
+        runOnUiThread(() -> {
+            switch (status) {
+                case CONN_NONE:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_red);
+                    break;
+                case CONN_PROGRESS:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                    break;
+                case CONN_OK:
+                default:
+                    sipStatusDot.setBackgroundResource(R.drawable.circle_green);
+                    break;
+            }
+        });
     }
 
+    public void setMQTTStatus(Connection status) {
+        runOnUiThread(() -> {
+            switch (status) {
+                case CONN_NONE:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_red);
+                    break;
+                case CONN_PROGRESS:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_yellow);
+                    break;
+                case CONN_OK:
+                default:
+                    mqttStatusDot.setBackgroundResource(R.drawable.circle_green);
+                    break;
+            }
+        });
+    }
     boolean notEmpty(String s) {
         return s != null && !s.isEmpty();
     }
@@ -97,16 +116,29 @@ public class MainActivity extends AppCompatActivity implements Constants {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        videoContainer = findViewById(R.id.videoContainer);
         remoteVideoView = findViewById(R.id.remote_video_surface);
-        remoteVideoView.setVisibility(View.GONE);
+        findViewById(R.id.btnReset).setOnClickListener(v -> {
+            remoteVideoView.resetToFitCenter(true);
+        });
+        videoContainer.setVisibility(View.GONE);
+
         callHomeButton = findViewById(R.id.callHomeButton);
         callGarageButton = findViewById(R.id.callGarageButton);
+        callKitchenButton = findViewById(R.id.callKitchenButton);
         hangupButton = findViewById(R.id.hangupButton);
         switchLight = findViewById(R.id.switchLight);
         toggleContainer = findViewById(R.id.toggleContainer);
         switchBell = findViewById(R.id.switchBell);
         sipStatusDot = findViewById(R.id.sipStatusDot);
+        mqttStatusDot = findViewById(R.id.mqttStatusDot);
         setSipStatus(CONN_NONE);
+        setMQTTStatus(CONN_NONE);
+
+        ImageButton settingsButton = findViewById(R.id.settingsButton);
+        settingsButton.setOnClickListener(v -> {
+            askForSIPandMQTTCredentials(true);
+        });
 
         networkMonitor = new NetworkMonitor(this, new NetworkMonitor.NetworkStatusListener() {
             @Override
@@ -122,16 +154,12 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
         networkMonitor.startMonitoring();
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(this::finish);
+            handleNoNetwork();
         }
 
         if (!checkPermissions()) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
         }
-
-        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
-        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
-        hangupButton.setOnClickListener(v -> hangUp());
 
         prefs = getSharedPreferences(MQTT_CREDENTIALS, MODE_PRIVATE);
         String user = prefs.getString(MQTT_USER, null);
@@ -155,8 +183,26 @@ public class MainActivity extends AppCompatActivity implements Constants {
                 });
             }).start();
         } else {
-            askForSIPandMQTTCredentials();
+            askForSIPandMQTTCredentials(false);
         }
+
+        //linphone actions
+        callHomeButton.setOnClickListener(v -> makeCall(HOME_USER));
+        callGarageButton.setOnClickListener(v -> makeCall(GARAGE_USER));
+        callKitchenButton.setOnClickListener(v -> makeCall(KITCHEN_USER));
+        hangupButton.setOnClickListener(v -> hangUp());
+
+        //mqtt actions
+        lightListener = (btn, isChecked) -> {
+            setLightTo(isChecked);
+        };
+        switchLight.setOnCheckedChangeListener(lightListener);
+
+        bellListener = (btn, isChecked) -> {
+            setBellTo(isChecked);
+        };
+        switchBell.setOnCheckedChangeListener(bellListener);
+        toggleContainer.setVisibility(View.GONE);
     }
 
     private boolean checkPermissions() {
@@ -186,6 +232,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void initLinphone() {
         try {
+            destroyLinphone();
 
             Config c = Factory.instance().createConfig(null);
             c.setInt("sip", "inc_timeout", 600);
@@ -247,7 +294,18 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
     private void makeCall(String user) {
         if (!networkMonitor.isConnected()) {
-            handleNoNetwork(this::finish);
+            handleNoNetwork();
+            return;
+        }
+
+        if (linphoneConnected != RegistrationState.Ok) {
+            alert = new AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.error))
+                    .setMessage(getString(R.string.sip_not_connected))
+                    .setPositiveButton(getString(R.string.ok), (dialog, which) -> {
+                        alert.dismiss();
+                    })
+                    .show();
             return;
         }
 
@@ -284,6 +342,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
             callGarageButton.setVisibility(View.GONE);
             callHomeButton.setVisibility(View.GONE);
+            callKitchenButton.setVisibility(View.GONE);
 
             hangupButton.setVisibility(View.VISIBLE);
 
@@ -311,15 +370,16 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
         callHomeButton.setVisibility(View.VISIBLE);
         callGarageButton.setVisibility(View.VISIBLE);
+        callKitchenButton.setVisibility(View.VISIBLE);
         hangupButton.setVisibility(View.GONE);
 
         toggleContainer.setVisibility(View.GONE);
     }
 
-    @Override
-    public void onDestroy() {
+    void destroyLinphone() {
         try {
             if (linphoneCore != null) {
+                linphoneCore.terminateAllCalls();
                 linphoneLogout();
                 linphoneCore.stop();
                 linphoneCore = null;
@@ -327,7 +387,12 @@ public class MainActivity extends AppCompatActivity implements Constants {
         } catch (Exception e) {
             Log.e(TAG, "linphone error:" + e);
         }
+    }
 
+    @Override
+    public void onDestroy() {
+
+        destroyLinphone();
         destroyMQTT();
 
         try {
@@ -342,20 +407,19 @@ public class MainActivity extends AppCompatActivity implements Constants {
     public class LinphoneListener extends CoreListenerStub {
         @Override
         public void onRegistrationStateChanged(@NonNull Core core, @NonNull ProxyConfig proxyConfig, RegistrationState state, @NonNull String message) {
-            runOnUiThread(() -> {
-                Log.v(TAG, message);
-                switch(state) {
-                    case Progress:
-                        setSipStatus(CONN_PROGRESS);
-                        break;
-                    case Ok:
-                        setSipStatus(CONN_OK);
-                        break;
-                    default:
-                        setSipStatus(CONN_NONE);
-                        break;
-                }
-            });
+            Log.v(TAG, message);
+            linphoneConnected = state;
+            switch(linphoneConnected) {
+                case Progress:
+                    setSipStatus(CONN_PROGRESS);
+                    break;
+                case Ok:
+                    setSipStatus(CONN_OK);
+                    break;
+                default:
+                    setSipStatus(CONN_NONE);
+                    break;
+            }
         }
 
         @Override
@@ -363,7 +427,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
             runOnUiThread(() -> {
                 switch (state) {
                     case Connected:
-                        remoteVideoView.setVisibility(View.VISIBLE);
+                        videoContainer.setVisibility(View.VISIBLE);
                         manageMQTTSwitchesVisibility(call, true);
                         break;
                     case End:
@@ -373,8 +437,10 @@ public class MainActivity extends AppCompatActivity implements Constants {
                         }
                         callHomeButton.setVisibility(View.VISIBLE);
                         callGarageButton.setVisibility(View.VISIBLE);
+                        callKitchenButton.setVisibility(View.VISIBLE);
                         hangupButton.setVisibility(View.GONE);
-                        remoteVideoView.setVisibility(View.GONE);
+                        remoteVideoView.resetToFitCenter(false);
+                        videoContainer.setVisibility(View.GONE);
 
                         manageMQTTSwitchesVisibility(call, false);
                         break;
@@ -389,18 +455,6 @@ public class MainActivity extends AppCompatActivity implements Constants {
             return;
         }
 
-        lightListener = (btn, isChecked) -> {
-            setLightTo(isChecked);
-        };
-        switchLight.setOnCheckedChangeListener(lightListener);
-
-        bellListener = (btn, isChecked) -> {
-            setBellTo(isChecked);
-        };
-        switchBell.setOnCheckedChangeListener(bellListener);
-
-        toggleContainer.setVisibility(View.GONE);
-
         mqttClient = new MQTTClient(
             this,
             ipbroker,
@@ -411,20 +465,30 @@ public class MainActivity extends AppCompatActivity implements Constants {
             new MQTTClient.MQTTStatusListener() {
                 @Override
                 public void onConnected() {
+                    setMQTTStatus(CONN_OK);
                     runOnUiThread(() -> {
                         Call c = null;
                         if(linphoneCore != null) {
                             c = linphoneCore.getCurrentCall();
                         }
-
                         manageMQTTSwitchesVisibility(c, true);
-                        mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
-                        mqttClient.subscribeTo(MQTT_BELL_TOPIC);
+                        if(mqttClient != null) {
+                            mqttClient.subscribeTo(MQTT_LIGHTS_TOPIC);
+                            mqttClient.subscribeTo(MQTT_BELL_TOPIC);
+                        }
                     });
                 }
 
                 @Override
+                public void onProgress() {
+                    if(mqttClient != null && !mqttClient.isConnected()) {
+                        setMQTTStatus(CONN_PROGRESS);
+                    }
+                }
+
+                @Override
                 public void onDisconnected() {
+                    setMQTTStatus(CONN_NONE);
                     runOnUiThread(() -> {
                         toggleContainer.setVisibility(View.GONE);
                     });
@@ -432,6 +496,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
 
                 @Override
                 public void onConnectionFailed(String reason) {
+                    setMQTTStatus(CONN_NONE);
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, reason, Toast.LENGTH_SHORT).show();
                     });
@@ -467,7 +532,14 @@ public class MainActivity extends AppCompatActivity implements Constants {
         }
     }
 
-    void askForSIPandMQTTCredentials() {
+    void autoFillWidget(EditText t, String identifier) {
+        if(t != null && identifier != null) {
+            String s = prefs.getString(identifier, null);
+            t.setText(notEmpty(s) ? s : "");
+        }
+    }
+
+    void askForSIPandMQTTCredentials(boolean autofill) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle(getString(R.string.mqtt_sip_login));
 
@@ -499,6 +571,15 @@ public class MainActivity extends AppCompatActivity implements Constants {
         inputSIPPass.setHint(getString(R.string.sip_pass));
         inputSIPPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         layout.addView(inputSIPPass);
+
+        if(autofill) {
+            autoFillWidget(inputUser, MQTT_USER);
+            autoFillWidget(inputPass, MQTT_PASS);
+            autoFillWidget(ipbroker, MQTT_BROKER_IP);
+            autoFillWidget(inputSIPUser, SIP_USER);
+            autoFillWidget(inputSIPDomain, SIP_DOMAIN);
+            autoFillWidget(inputSIPPass, SIP_PASS);
+        }
 
         builder.setView(layout);
 
