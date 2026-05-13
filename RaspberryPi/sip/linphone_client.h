@@ -13,6 +13,7 @@
 
 #define MAX_BUFFER_SIZE 256
 #define MAX_INPUT_SIZE 64
+#define BANDWIDTH 0
 
 #define AUTH_PATH ".sip_client_auth"
 
