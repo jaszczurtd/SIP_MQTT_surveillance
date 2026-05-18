@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.res.Configuration;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -107,13 +108,12 @@ public class MainActivity extends AppCompatActivity implements Constants {
         return s != null && !s.isEmpty();
     }
 
-    @SuppressLint("SourceLockedOrientationActivity")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         videoContainer = findViewById(R.id.videoContainer);
@@ -387,6 +387,16 @@ public class MainActivity extends AppCompatActivity implements Constants {
         } catch (Exception e) {
             Log.e(TAG, "linphone error:" + e);
         }
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        Log.v(TAG, "Configuration changed, orientation: " + 
+            (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE ? "LANDSCAPE" : "PORTRAIT"));
+        
+        // The ZoomableVideoTextureView will handle the rotation automatically
+        // through onSurfaceTextureSizeChanged callback
     }
 
     @Override
