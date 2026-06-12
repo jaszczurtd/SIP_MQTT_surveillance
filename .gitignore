@@ -10,4 +10,5 @@ SIPClient/.idea/*
 SIPClient/app/src/main/res/raw/*.crt
 IPClient/app/src/main/res/raw/*.cert
 SIPClient/.kotlin/errors/*
+.idea/*
 

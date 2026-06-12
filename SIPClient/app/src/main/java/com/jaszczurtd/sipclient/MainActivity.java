@@ -8,6 +8,9 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
@@ -112,6 +115,7 @@ public class MainActivity extends AppCompatActivity implements Constants {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        applySystemBarsInsets();
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -203,6 +207,28 @@ public class MainActivity extends AppCompatActivity implements Constants {
         };
         switchBell.setOnCheckedChangeListener(bellListener);
         toggleContainer.setVisibility(View.GONE);
+    }
+
+    private void applySystemBarsInsets() {
+        View rootLayout = findViewById(R.id.rootLayout);
+        int initialLeft = rootLayout.getPaddingLeft();
+        int initialTop = rootLayout.getPaddingTop();
+        int initialRight = rootLayout.getPaddingRight();
+        int initialBottom = rootLayout.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout, (view, windowInsets) -> {
+            Insets systemBars = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            view.setPadding(
+                    initialLeft + systemBars.left,
+                    initialTop + systemBars.top,
+                    initialRight + systemBars.right,
+                    initialBottom + systemBars.bottom
+            );
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(rootLayout);
     }
 
     private boolean checkPermissions() {
