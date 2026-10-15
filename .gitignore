@@ -12,3 +12,5 @@ IPClient/app/src/main/res/raw/*.cert
 SIPClient/.kotlin/errors/*
 .idea/*
 
+# Local work journal
+NOW.md

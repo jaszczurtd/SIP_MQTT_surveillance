@@ -1,20 +1,9 @@
+MQTT GPIO client documentation
 
-install:
-sudo apt update
-sudo apt install libmosquitto-dev libmosquitto1 mosquitto-clients
+Build: ../../docs/BUILDING.md
+Configuration and service installation: ../../docs/DEPLOYMENT.md
+Commands, retained messages, and timeouts: ../../docs/USAGE.md
+Diagnostics: ../../docs/TROUBLESHOOTING.md
 
-compile:
-gcc -o mqtt_gpio mqtt_gpio_client.c -lmosquitto
-
-ports:
-
-sudo iptables -A INPUT -p tcp --dport 1883 -j ACCEPT
-#sudo apt install -y iptables-persistent
-#sudo sh -c "iptables-save > /etc/iptables/rules.v4"
-sudo netfilter-persistent save
-
-sudo systemctl daemon-reload
-sudo systemctl enable mqtt-gpio.service
-sudo systemctl start mqtt-gpio.service
-sudo systemctl status mqtt-gpio.service
-
+Polska dokumentacja: ../../README.pl.md
+Paths are relative to this file's directory.
